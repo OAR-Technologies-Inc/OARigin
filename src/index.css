@@ -1,0 +1,69 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  font-family: 'Crimson Pro', serif;
+  background-color: #0a0a0a;
+  color: #ffffff;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #111111;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #00FF00;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #00CC00;
+}
+
+/* CRT effect */
+@keyframes flicker {
+  0% {
+    opacity: 0.98;
+  }
+  5% {
+    opacity: 0.95;
+  }
+  10% {
+    opacity: 0.97;
+  }
+  15% {
+    opacity: 0.94;
+  }
+  20% {
+    opacity: 0.98;
+  }
+  50% {
+    opacity: 0.97;
+  }
+  80% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0.98;
+  }
+}
+
+.crt-effect {
+  animation: flicker 5s infinite;
+}
+
+/* Blinking cursor */
+.cursor-blink {
+  animation: terminal-blink 1s step-end infinite;
+}
