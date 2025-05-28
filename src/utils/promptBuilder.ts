@@ -13,6 +13,7 @@ interface PromptOptions {
   sessionGoal?: 'short' | 'medium' | 'long' | 'conclude';
   inventory?: string[];
   turnCount?: number;
+  progress?: Record<string, any>; // Track progress toward mode-specific goals
 }
 
 export function buildNarrationPrompt({
@@ -30,17 +31,54 @@ export function buildNarrationPrompt({
   sessionGoal = 'medium',
   inventory = [],
   turnCount = 0,
+  progress = {},
 }: PromptOptions) {
   const activePlayers = players.filter(p => !deadPlayers.includes(p));
   const partySize = activePlayers.length;
   console.log(`Active players count: ${partySize}`);
 
-  // If all players are dead, conclude the game immediately
-  if (activePlayers.length === 0) {
+  // Determine if the storyline is complete based on mode-specific progress
+  let isStoryComplete = false;
+  switch (genre.toLowerCase()) {
+    case 'survival':
+      isStoryComplete = (progress.daysSurvived >= 7 || progress.milesTraveled >= 10);
+      break;
+    case 'fantasy':
+      isStoryComplete = (progress.artifactsFound >= 3);
+      break;
+    case 'horror':
+      isStoryComplete = (progress.cluesFound >= 5);
+      break;
+    case 'sci-fi':
+      isStoryComplete = (progress.nodesDisabled >= 5);
+      break;
+    case 'mystery':
+      isStoryComplete = (progress.cluesFound >= 8);
+      break;
+    case 'adventure':
+      isStoryComplete = (progress.distanceCovered >= 100);
+      break;
+    default:
+      isStoryComplete = false;
+  }
+
+  // If the storyline is complete or all players are dead, conclude the game
+  if (activePlayers.length === 0 || isStoryComplete) {
+    const conclusionType = activePlayers.length === 0 ? 'failure' : 'success';
+    const conclusionMessage = conclusionType === 'success'
+      ? (genre.toLowerCase() === 'survival' ? "After days of struggle, your group is rescued by a passing ship, your trials finally at an end!" :
+         genre.toLowerCase() === 'fantasy' ? "With the final artifact in hand, your group defeats the dragon, saving the kingdom from its terror!" :
+         genre.toLowerCase() === 'horror' ? "With the spirit’s name uncovered, your group banishes the horror, escaping as dawn breaks!" :
+         genre.toLowerCase() === 'sci-fi' ? "The rogue AI shuts down, and your group secures the space station, a hard-fought victory!" :
+         genre.toLowerCase() === 'mystery' ? "Your group identifies the murderer, bringing justice to the ball as the clock strikes midnight!" :
+         genre.toLowerCase() === 'adventure' ? "Your group reaches the lost oasis, its waters shimmering with promise—a journey complete!" :
+         "Your group achieves its goal, a triumphant end to your journey!")
+      : "Your group succumbs to the challenges, your story ending in tragedy. Only the echoes of your struggle remain.";
+
     return `
 Genre: ${genre}
 
-Alive players: None
+Alive players: ${activePlayers.length > 0 ? activePlayers.join(', ') : 'None'}
 Dead players: ${deadPlayers.join(', ') || 'None'}
 Current inventory: ${inventory.join(', ') || 'empty'}
 Turn count: ${turnCount}
@@ -49,7 +87,7 @@ Story so far:
 ${storyLog.slice(-10).map((entry, i) => `${i + 1}. ${entry}`).join('\n') || 'No prior story.'}
 
 Narration Instructions:
-- Conclude the story immediately, as all players have died. Narrate a final scene reflecting on the group's fate with emotional impact (e.g., "Your group succumbs to the wilderness, your story ending in the dense jungle as the storm rages on."). Do not prompt for further actions or choices, as the game has ended. Do not continue the narrative beyond death (e.g., no afterlife scenarios, ghostly perspectives, or repetitive prompts).
+- Conclude the story immediately, as ${conclusionType === 'success' ? 'the storyline has been completed' : 'all players have died'}. Narrate a final scene reflecting on the group's fate with emotional impact (e.g., "${conclusionMessage}"). Do not prompt for further actions or choices, as the game has ended. Do not continue the narrative beyond this conclusion (e.g., no afterlife scenarios, ghostly perspectives, or repetitive prompts).
 - Do not break character as the narrator. Keep the conclusion concise and immersive.
 
 Continue the story from the narrator’s perspective.
