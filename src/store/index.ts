@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { GameGenre, Room, User, StorySegment, Vote, RoomStatus, GameMode } from '../types';
+import { GameGenre, Room, User, StorySegment, Vote, RoomStatus, GameMode, GameState, GameProgress } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 interface GameState {
@@ -17,9 +17,11 @@ interface GameState {
   // Game state
   storySegments: StorySegment[];
   currentVotes: Vote[];
-  gameInProgress: boolean;
+  gameState: GameState;
   loadingStory: boolean;
   currentPlayerIndex: number;
+  deadPlayers: string[];
+  progress: GameProgress;
 
   // Actions
   setUser: (user: User | null) => void;
@@ -37,9 +39,12 @@ interface GameState {
   nextPlayerTurn: () => void;
   generateTempUser: (username: string) => void;
   createTempRoom: (genre: GameGenre) => string;
+  setPlayerDeath: (playerName: string) => void;
+  checkGameEnd: () => void;
+  updateProgress: (updates: Partial<GameProgress>) => void;
 }
 
-export const useGameStore = create<GameState>((set) => ({
+export const useGameStore = create<GameState>((set, get) => ({
   // Initial state
   currentUser: null,
   isAuthenticated: false,
@@ -50,9 +55,11 @@ export const useGameStore = create<GameState>((set) => ({
   isHost: false,
   storySegments: [],
   currentVotes: [],
-  gameInProgress: false,
+  gameState: GameState.PLAYING,
   loadingStory: false,
   currentPlayerIndex: 0,
+  deadPlayers: [],
+  progress: {},
 
   // Actions
   setUser: (user) => set({ currentUser: user }),
@@ -101,16 +108,18 @@ export const useGameStore = create<GameState>((set) => ({
 
   startGame: () =>
     set((state) => ({
-      gameInProgress: true,
+      gameState: GameState.PLAYING,
       currentRoom: state.currentRoom
         ? { ...state.currentRoom, status: RoomStatus.IN_PROGRESS }
         : null,
-      currentPlayerIndex: 0
+      currentPlayerIndex: 0,
+      deadPlayers: [],
+      progress: {}
     })),
 
   endGame: () =>
     set((state) => ({
-      gameInProgress: false,
+      gameState: GameState.ENDED,
       currentRoom: state.currentRoom
         ? { ...state.currentRoom, status: RoomStatus.CLOSED }
         : null
@@ -121,11 +130,73 @@ export const useGameStore = create<GameState>((set) => ({
   setCurrentPlayerIndex: (index) => set({ currentPlayerIndex: index }),
 
   nextPlayerTurn: () =>
+    set((state) => {
+      const alivePlayers = state.players.filter(p => p.status === 'alive');
+      if (alivePlayers.length === 0) {
+        return { currentPlayerIndex: 0 };
+      }
+      
+      let nextIndex = state.currentPlayerIndex;
+      do {
+        nextIndex = (nextIndex + 1) % state.players.length;
+      } while (state.players[nextIndex].status === 'dead' && nextIndex !== state.currentPlayerIndex);
+      
+      return { currentPlayerIndex: nextIndex };
+    }),
+
+  setPlayerDeath: (playerName) =>
+    set((state) => {
+      const player = state.players.find(p => p.username === playerName);
+      if (!player) return state;
+
+      const updatedPlayers = state.players.map(p =>
+        p.username === playerName ? { ...p, status: 'dead' as const } : p
+      );
+
+      return {
+        players: updatedPlayers,
+        deadPlayers: [...state.deadPlayers, playerName]
+      };
+    }),
+
+  checkGameEnd: () =>
+    set((state) => {
+      const alivePlayers = state.players.filter(p => p.status === 'alive');
+      if (alivePlayers.length === 0) {
+        return { gameState: GameState.ENDED };
+      }
+
+      const { currentRoom, progress } = state;
+      if (!currentRoom) return state;
+
+      let shouldEnd = false;
+      switch (currentRoom.genreTag.toLowerCase()) {
+        case 'survival':
+          shouldEnd = (progress.daysSurvived ?? 0) >= 7 || (progress.milesTraveled ?? 0) >= 10;
+          break;
+        case 'fantasy':
+          shouldEnd = (progress.artifactsFound ?? 0) >= 3;
+          break;
+        case 'horror':
+          shouldEnd = (progress.cluesFound ?? 0) >= 5;
+          break;
+        case 'sci-fi':
+          shouldEnd = (progress.nodesDisabled ?? 0) >= 5;
+          break;
+        case 'mystery':
+          shouldEnd = (progress.cluesFound ?? 0) >= 8;
+          break;
+        case 'adventure':
+          shouldEnd = (progress.distanceCovered ?? 0) >= 100;
+          break;
+      }
+
+      return shouldEnd ? { gameState: GameState.ENDED } : state;
+    }),
+
+  updateProgress: (updates) =>
     set((state) => ({
-      currentPlayerIndex:
-        state.players.length > 0
-          ? (state.currentPlayerIndex + 1) % state.players.length
-          : 0
+      progress: { ...state.progress, ...updates }
     })),
 
   generateTempUser: (username) =>
@@ -153,7 +224,7 @@ export const useGameStore = create<GameState>((set) => ({
         genreTag: genre,
         createdAt: new Date().toISOString(),
         hostId: state.currentUser.id,
-        gameMode: GameMode.FREE_TEXT // Default to free_text
+        gameMode: GameMode.FREE_TEXT
       };
 
       return {
@@ -162,7 +233,10 @@ export const useGameStore = create<GameState>((set) => ({
         players: state.currentUser ? [{ ...state.currentUser, status: 'alive' }] : [],
         previousPlayers: state.currentUser ? [{ ...state.currentUser, status: 'alive' }] : [],
         newPlayers: [],
-        currentPlayerIndex: 0
+        currentPlayerIndex: 0,
+        gameState: GameState.PLAYING,
+        deadPlayers: [],
+        progress: {}
       };
     });
 

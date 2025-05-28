@@ -23,6 +23,20 @@ export enum GameMode {
   MULTIPLE_CHOICE = 'multiple_choice'
 }
 
+export enum GameState {
+  PLAYING = 'playing',
+  ENDED = 'ended'
+}
+
+export interface GameProgress {
+  daysSurvived?: number;
+  milesTraveled?: number;
+  artifactsFound?: number;
+  cluesFound?: number;
+  nodesDisabled?: number;
+  distanceCovered?: number;
+}
+
 export interface User {
   id: string;
   username: string;

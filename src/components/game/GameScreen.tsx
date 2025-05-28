@@ -6,7 +6,7 @@ import StoryConsole from './StoryConsole';
 import ChatSidebar from './ChatSidebar';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
-import { StorySegment } from '../../types';
+import { StorySegment, GameState } from '../../types';
 import {
   generateStoryBeginning,
   generateStoryContinuation,
@@ -23,11 +23,13 @@ const GameScreen: React.FC = () => {
     currentPlayerIndex,
     storySegments,
     addStorySegment,
-    gameInProgress,
+    gameState,
     loadingStory,
     setLoadingStory,
     nextPlayerTurn,
-    clearNewPlayers
+    clearNewPlayers,
+    checkGameEnd,
+    progress
   } = useGameStore();
 
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -35,10 +37,10 @@ const GameScreen: React.FC = () => {
   const hasStartedRef = useRef(false);
 
   useEffect(() => {
-    if (!currentRoom || !gameInProgress) {
+    if (!currentRoom || gameState === GameState.ENDED) {
       navigate('/');
     }
-  }, [currentRoom, gameInProgress, navigate]);
+  }, [currentRoom, gameState, navigate]);
 
   useEffect(() => {
     const initializeStory = async () => {
@@ -93,13 +95,15 @@ const GameScreen: React.FC = () => {
 
       try {
         const previousSegment = storySegments[storySegments.length - 1]?.aiResponse || '';
+        const deadPlayers = players.filter(p => p.status === 'dead').map(p => p.username);
+        
         const aiResponse = await generateStoryContinuation({
           genre: currentRoom.genreTag,
           players: players.map(p => p.username),
           storyLog: storySegments.map(s => s.aiResponse || s.content).filter(s => s),
-          currentPlayer: '', // No current player for introductions
-          playerInput: '', // No player input for introductions
-          deadPlayers: players.filter(p => p.status === 'dead').map(p => p.username),
+          currentPlayer: '',
+          playerInput: '',
+          deadPlayers,
           newPlayers: newPlayers.map(p => p.username),
           gameMode: currentRoom.gameMode
         });
@@ -115,7 +119,7 @@ const GameScreen: React.FC = () => {
         };
 
         setTempSegment(newSegment);
-        clearNewPlayers(); // Clear new players after introduction
+        clearNewPlayers();
       } catch (error) {
         console.error('Failed to introduce new players:', error);
         const fallbackSegment: StorySegment = {
@@ -138,20 +142,22 @@ const GameScreen: React.FC = () => {
   }, [newPlayers, loadingStory, currentRoom, tempSegment, storySegments, players]);
 
   const handleMakeChoice = async (choice: string) => {
-    if (loadingStory || !currentRoom || tempSegment) return;
+    if (loadingStory || !currentRoom || tempSegment || gameState === GameState.ENDED) return;
 
     setLoadingStory(true);
 
     try {
       const previousSegment = storySegments[storySegments.length - 1]?.aiResponse || '';
+      const deadPlayers = players.filter(p => p.status === 'dead').map(p => p.username);
+      
       const aiResponse = await generateStoryContinuation({
         genre: currentRoom.genreTag,
         players: players.map(p => p.username),
         storyLog: storySegments.map(s => s.aiResponse || s.content).filter(s => s),
         currentPlayer: players[currentPlayerIndex].username,
         playerInput: choice,
-        deadPlayers: players.filter(p => p.status === 'dead').map(p => p.username),
-        newPlayers: [], // New players handled separately
+        deadPlayers,
+        newPlayers: [],
         gameMode: currentRoom.gameMode
       });
 
@@ -167,6 +173,7 @@ const GameScreen: React.FC = () => {
 
       setTempSegment(newSegment);
       nextPlayerTurn();
+      checkGameEnd();
     } catch (error) {
       console.error('Failed to generate story continuation:', error);
       const fallbackSegment: StorySegment = {
@@ -180,6 +187,7 @@ const GameScreen: React.FC = () => {
       };
       setTempSegment(fallbackSegment);
       nextPlayerTurn();
+      checkGameEnd();
     } finally {
       setLoadingStory(false);
     }
@@ -207,6 +215,7 @@ const GameScreen: React.FC = () => {
   };
 
   const currentPlayer = players[currentPlayerIndex]?.username || 'Player';
+  const isCurrentPlayerDead = players[currentPlayerIndex]?.status === 'dead';
 
   return (
     <div className="min-h-screen flex flex-col p-2 md:p-4">
@@ -233,7 +242,7 @@ const GameScreen: React.FC = () => {
             icon={<Users size={16} />}
             className="px-2 md:px-3"
           >
-            {players.length}
+            {players.filter(p => p.status === 'alive').length}/{players.length}
           </Button>
 
           <Button
@@ -267,6 +276,8 @@ const GameScreen: React.FC = () => {
           onMakeChoice={handleMakeChoice}
           isProcessing={loadingStory}
           currentPlayer={currentPlayer}
+          isCurrentPlayerDead={isCurrentPlayerDead}
+          gameState={gameState}
         />
       </Card>
 
