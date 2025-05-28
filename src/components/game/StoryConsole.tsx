@@ -168,14 +168,14 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
                   }`}
                 />
                 <Button
-                  variant="primary"
+                  variant={isCurrentPlayerDead ? "danger" : "primary"}
                   onClick={handleFreestyleSubmit}
                   disabled={!freestyleInput.trim() || isCurrentPlayerDead || gameState === GameState.ENDED}
                   icon={<Send size={16} />}
                   fullWidth
-                  className="mt-2"
+                  className={`mt-2 ${isCurrentPlayerDead ? 'opacity-50' : ''}`}
                 >
-                  Submit Move
+                  {isCurrentPlayerDead ? "You Have Died" : "Submit Move"}
                 </Button>
               </>
             ) : (
@@ -184,7 +184,7 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
                   options.map((option, index) => (
                     <Button
                       key={index}
-                      variant="secondary"
+                      variant={isCurrentPlayerDead ? "danger" : "secondary"}
                       onClick={() => handleOptionSelect(option)}
                       disabled={isCurrentPlayerDead || gameState === GameState.ENDED}
                       fullWidth
