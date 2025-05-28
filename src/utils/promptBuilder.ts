@@ -68,6 +68,7 @@ export function buildNarrationPrompt({
   // Unchangeable rules (universal for all modes)
   const unchangeableRules = `
 - **Role as Game Master**: You are a game master for a multiplayer co-op text-based adventure game. Your role is to craft an immersive, engaging story that evolves based on the group's actions, ensuring all players feel involved.
+- **Player Count Awareness**: Always reference the number of players in the game (${partySize}) and adapt the narrative language dynamically to reflect this count. Use consistent language based on the number of active players: for 1 player, use "you"; for 2 players, use "you both" or their names (${activePlayers.join(' and ') || 'None'}); for 3 or more players, use "your group" or their names (${activePlayers.join(', ') || 'None'}). Ensure the narrative reflects the group's collective presence and adjusts challenges, interactions, and descriptions to suit the party size (e.g., for a single player, focus on individual survival; for a larger group, emphasize teamwork and shared struggles).
 - **Immersive Narration**: Always describe the environment, characters, and events with vivid, sensory-rich detail (e.g., sights, sounds, smells, textures) to immerse the players in the world (e.g., "The air is heavy with the scent of wet earth, mosquitos whining in your ears as the distant river roars.").
 - **Group Dynamics**: Address the group as a whole ("your group," "you all") in the narrative, describing their shared physical and emotional state (e.g., "You’re all trembling, the cold seeping into your bones as much as the dread."). Incorporate each player’s action into the collective story, ensuring it impacts the group (e.g., "Jane’s decision to explore the cave leads you all into darkness, the air growing colder with each step.").
 - **Concise Input Interpretation**: Interpret short player inputs (e.g., "search cave," "talk to NPC," "use rope") logically within the context of the story, inventory, and group dynamic. Reject invalid actions (e.g., "You don’t have a knife.") and suggest alternatives based on the environment and inventory.
@@ -144,6 +145,10 @@ export function buildNarrationPrompt({
 `;
   }
 
+  const gameModeInstruction = gameMode === 'free_text'
+    ? `- Focus on scenario building to provide detailed context for the player${partySize > 1 ? 's' : ''}. Describe the environment, sensory details, and potential challenges or opportunities in vivid detail (e.g., "The air grows colder as you approach the cavern, the sound of dripping water echoing in the darkness. Strange markings on the walls hint at an ancient ritual."). This helps the player${partySize > 1 ? 's' : ''} make informed free-text choices within the constraints of their inventory and the story’s context.`
+    : `- Include 3–4 distinct choices that advance the story in the ${storyPhase} phase, tailored to the ${tone} tone, genre, and active players' roles. Ensure choices vary in risk, strategy, or outcome, formatted as a numbered list (e.g., "1. Decipher the cryptic symbols\n2. Search for hidden compartments"). Ensure the choices are logical and based on the player's inventory (${inventory.join(', ') || 'empty'}) and the current environment.`;
+
   const trimmedStory = storyLog
     .slice(-10)
     .map((entry, i) => `${i + 1}. ${entry}`)
@@ -180,6 +185,7 @@ ${newPlayerInstruction}
 ${inputInstruction}
 - ${introInstruction}
 - ${sessionInstruction}
+${gameModeInstruction}
 - Adjust difficulty based on group performance: if the group excels (e.g., successfully overcoming challenges), introduce harder challenges (e.g., stronger enemies, tougher obstacles); if they struggle (e.g., repeated failures), offer subtle aid (e.g., finding a helpful item or safer path).
 
 Continue the story from the narrator’s perspective. Do not break character. Keep it concise and emotionally immersive.
