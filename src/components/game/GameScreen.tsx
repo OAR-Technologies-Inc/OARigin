@@ -28,8 +28,8 @@ const GameScreen: React.FC = () => {
     setLoadingStory,
     nextPlayerTurn,
     clearNewPlayers,
-    checkGameEnd,
-    progress
+    setPlayerDeath,
+    checkGameEnd
   } = useGameStore();
 
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -97,7 +97,7 @@ const GameScreen: React.FC = () => {
         const previousSegment = storySegments[storySegments.length - 1]?.aiResponse || '';
         const deadPlayers = players.filter(p => p.status === 'dead').map(p => p.username);
         
-        const aiResponse = await generateStoryContinuation({
+        const { text } = await generateStoryContinuation({
           genre: currentRoom.genreTag,
           players: players.map(p => p.username),
           storyLog: storySegments.map(s => s.aiResponse || s.content).filter(s => s),
@@ -112,7 +112,7 @@ const GameScreen: React.FC = () => {
           id: uuidv4(),
           roomId: currentRoom.id,
           content: '',
-          aiResponse,
+          aiResponse: text,
           decisionType: 'freestyle',
           options: [],
           createdAt: new Date().toISOString()
@@ -150,7 +150,7 @@ const GameScreen: React.FC = () => {
       const previousSegment = storySegments[storySegments.length - 1]?.aiResponse || '';
       const deadPlayers = players.filter(p => p.status === 'dead').map(p => p.username);
       
-      const aiResponse = await generateStoryContinuation({
+      const { text, playerDied } = await generateStoryContinuation({
         genre: currentRoom.genreTag,
         players: players.map(p => p.username),
         storyLog: storySegments.map(s => s.aiResponse || s.content).filter(s => s),
@@ -165,11 +165,15 @@ const GameScreen: React.FC = () => {
         id: uuidv4(),
         roomId: currentRoom.id,
         content: choice,
-        aiResponse,
+        aiResponse: text,
         decisionType: 'freestyle',
         options: [],
         createdAt: new Date().toISOString()
       };
+
+      if (playerDied) {
+        setPlayerDeath(players[currentPlayerIndex].username);
+      }
 
       setTempSegment(newSegment);
       nextPlayerTurn();

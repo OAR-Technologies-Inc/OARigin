@@ -1,4 +1,4 @@
-import { GameGenre } from '../types';
+import { GameGenre, GameState } from '../types';
 import { buildNarrationPrompt } from './promptBuilder';
 
 const fallbackResponses = [
@@ -11,6 +11,29 @@ const fallbackResponses = [
 
 const getFallbackResponse = () => {
   return fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)];
+};
+
+// Check for death in AI response
+const checkForDeath = (response: string): boolean => {
+  const deathPhrases = [
+    'you have died',
+    'your life ends',
+    'death claims you',
+    'your journey ends here',
+    '[PLAYER_DEATH]',
+    'succumb to your wounds',
+    'breathe your last breath',
+    'your tale comes to a tragic end'
+  ];
+  
+  return deathPhrases.some(phrase => 
+    response.toLowerCase().includes(phrase.toLowerCase())
+  );
+};
+
+// Remove death tags from response
+const cleanResponse = (response: string): string => {
+  return response.replace(/\[PLAYER_DEATH\]/g, '').trim();
 };
 
 // Generate a story beginning
@@ -28,42 +51,12 @@ export const generateStoryBeginning = async (
       return getFallbackResponse();
     }
 
-    const partySize = players.length;
-    const playerNames = players.join(', ');
-
-    const voice =
-      partySize === 1
-        ? 'Use second-person perspective ("You").'
-        : partySize === 2
-        ? 'Refer to them collectively as "you both" or by name.'
-        : 'Refer to them as "your group", "you all", or by name.';
-
-    const bannedNames = [
-      'Eldoria', 'Ironwood', 'Ravensreach', 'Arcanvale', 'Veloria',
-      'Drakmor', 'Mythglen', 'Shadowfen', 'Stormhold'
-    ];
-
-    const settingSeeds = [
-      'a submerged city only visible at dusk',
-      'a cursed forest frozen mid-thunderstorm',
-      'a spiraling tower that bleeds light',
-      'a mirror world trapped inside a library',
-      'a ghost town built entirely from salt'
-    ];
-    const randomSetting = settingSeeds[Math.floor(Math.random() * settingSeeds.length)];
-
-    const prompt = `
-Start a new ${genre} adventure for ${partySize} player${partySize > 1 ? 's' : ''}: ${playerNames}.
-${voice}
-The story begins in ${randomSetting}.
-
-🚫 Do NOT use generic or common fantasy place names.
-Specifically avoid: ${bannedNames.join(', ')}.
-Invent new, vivid locations, people, and threats. Prioritize originality.
-
-Begin with tension, awe, or urgency. Pull the players in with immediate stakes or danger.
-Make the world react to the size of the party and acknowledge their presence naturally.
-`;
+    const prompt = buildNarrationPrompt({
+      genre,
+      players,
+      gameMode,
+      storyPhase: 'opening'
+    });
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -74,14 +67,7 @@ Make the world react to the size of the party and acknowledge their presence nat
         Authorization: `Bearer ${supabaseKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ 
-        prompt: buildNarrationPrompt({
-          genre,
-          players: playerNames.split(', '),
-          gameMode,
-          storyPhase: 'opening'
-        })
-      }),
+      body: JSON.stringify({ prompt }),
       signal: controller.signal,
     });
 
@@ -92,7 +78,7 @@ Make the world react to the size of the party and acknowledge their presence nat
     }
 
     const data = await response.json();
-    return data.text;
+    return cleanResponse(data.text);
   } catch (error: any) {
     console.error('Story beginning error:', error);
     return getFallbackResponse();
@@ -159,14 +145,29 @@ export const generateStoryContinuation = async ({
     }
 
     const data = await response.json();
-    return data.text;
+    const aiResponse = data.text;
+
+    // Check for death in response
+    const isDeath = checkForDeath(aiResponse);
+    const cleanedResponse = cleanResponse(aiResponse);
+
+    return {
+      text: cleanedResponse,
+      playerDied: isDeath
+    };
   } catch (error: any) {
     if (error.name === 'AbortError') {
       console.error('Edge function timeout:', error);
-      return "The mystical forces require more time to weave the next chapter... [Connection timeout]";
+      return {
+        text: "The mystical forces require more time to weave the next chapter... [Connection timeout]",
+        playerDied: false
+      };
     }
     console.error('Story continuation error:', error);
-    return getFallbackResponse();
+    return {
+      text: getFallbackResponse(),
+      playerDied: false
+    };
   }
 };
 
