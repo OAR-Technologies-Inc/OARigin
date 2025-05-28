@@ -10,7 +10,6 @@ import { StorySegment, GameState } from '../../types';
 import {
   generateStoryBeginning,
   generateStoryContinuation,
-  simulateAiProcessing
 } from '../../utils/mockAi';
 import { v4 as uuidv4 } from 'uuid';
 
