@@ -13,6 +13,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const { isSubscribed, loading } = useAuthContext();
   const navigate = useNavigate();
 
+  // Dev mode check
+  const isDevMode = import.meta.env.MODE === 'development' || 
+    import.meta.env.VITE_ENABLE_DEV_MODE === 'true';
+
   const handleSubscribe = () => {
     // Redirect to Stripe checkout
     navigate('/subscribe');
@@ -31,8 +35,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       <main className="relative z-10 pt-16 min-h-[calc(100vh-64px)]">
         {children}
 
-        {/* Subscription Overlay */}
-        {!loading && !isSubscribed && (
+        {/* Subscription Overlay - Only show in production and when not subscribed */}
+        {!loading && !isSubscribed && !isDevMode && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <Card className="w-full max-w-md p-6 text-center">
               <h2 className="text-xl font-mono font-bold text-green-500 mb-4">
