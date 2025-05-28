@@ -34,6 +34,13 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
   const [animationDone, setAnimationDone] = useState(false);
   const [options, setOptions] = useState<string[]>([]);
 
+  // Clear input when player dies or game ends
+  useEffect(() => {
+    if (isCurrentPlayerDead || gameState === GameState.ENDED) {
+      setFreestyleInput('');
+    }
+  }, [isCurrentPlayerDead, gameState]);
+
   useEffect(() => {
     if (tempSegment) {
       setAnimationDone(false);
@@ -98,13 +105,23 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
   };
 
   const getInputPlaceholder = () => {
-    if (gameState === GameState.ENDED) {
-      return "Game Over - Story has concluded";
-    }
     if (isCurrentPlayerDead) {
       return "You have died and can no longer act";
     }
+    if (gameState === GameState.ENDED) {
+      return "Game Over - Story has concluded";
+    }
     return "Enter your action or response...";
+  };
+
+  const getStatusMessage = () => {
+    if (isCurrentPlayerDead) {
+      return <span className="text-red-500">You have died</span>;
+    }
+    if (gameState === GameState.ENDED) {
+      return <span className="text-amber-500">Story Complete</span>;
+    }
+    return "What do you do?";
   };
 
   return (
@@ -134,14 +151,7 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
       {!isProcessing && animationDone && currentPlayer && (
         <div className="sticky bottom-0 bg-gray-900 p-4 rounded-lg shadow-lg">
           <div className="mb-2 text-sm font-mono text-green-400">
-            <strong>{currentPlayer}'s turn:</strong>{' '}
-            {gameState === GameState.ENDED ? (
-              <span className="text-amber-500">Story Complete</span>
-            ) : isCurrentPlayerDead ? (
-              <span className="text-red-500">You have died</span>
-            ) : (
-              'What do you do?'
-            )}
+            <strong>{currentPlayer}'s turn:</strong> {getStatusMessage()}
           </div>
           
           <div className="space-y-2">
@@ -150,10 +160,12 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
                 <TextArea
                   placeholder={getInputPlaceholder()}
                   value={freestyleInput}
-                  onChange={(e) => setFreestyleInput(e.target.value)}
+                  onChange={(e) => !isCurrentPlayerDead && gameState !== GameState.ENDED && setFreestyleInput(e.target.value)}
                   disabled={isCurrentPlayerDead || gameState === GameState.ENDED}
                   fullWidth
-                  className="min-h-[80px] text-sm md:text-base"
+                  className={`min-h-[80px] text-sm md:text-base ${
+                    isCurrentPlayerDead ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
                 />
                 <Button
                   variant="primary"
@@ -176,17 +188,19 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
                       onClick={() => handleOptionSelect(option)}
                       disabled={isCurrentPlayerDead || gameState === GameState.ENDED}
                       fullWidth
-                      className="text-sm md:text-base"
+                      className={`text-sm md:text-base ${
+                        isCurrentPlayerDead ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
                     >
                       {option}
                     </Button>
                   ))
                 ) : (
                   <div className="text-gray-500 text-sm text-center">
-                    {gameState === GameState.ENDED ? (
-                      'Story has concluded'
-                    ) : isCurrentPlayerDead ? (
+                    {isCurrentPlayerDead ? (
                       'You have died'
+                    ) : gameState === GameState.ENDED ? (
+                      'Story has concluded'
                     ) : (
                       'Waiting for options...'
                     )}
