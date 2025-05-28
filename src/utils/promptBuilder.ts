@@ -35,10 +35,29 @@ export function buildNarrationPrompt({
   const partySize = activePlayers.length;
   console.log(`Active players count: ${partySize}`);
 
+  // If all players are dead, conclude the game immediately
+  if (activePlayers.length === 0) {
+    return `
+Genre: ${genre}
+
+Alive players: None
+Dead players: ${deadPlayers.join(', ') || 'None'}
+Current inventory: ${inventory.join(', ') || 'empty'}
+Turn count: ${turnCount}
+
+Story so far:
+${storyLog.slice(-10).map((entry, i) => `${i + 1}. ${entry}`).join('\n') || 'No prior story.'}
+
+Narration Instructions:
+- Conclude the story immediately, as all players have died. Narrate a final scene reflecting on the group's fate with emotional impact (e.g., "Your group succumbs to the wilderness, your story ending in the dense jungle as the storm rages on."). Do not prompt for further actions or choices, as the game has ended. Do not continue the narrative beyond death (e.g., no afterlife scenarios, ghostly perspectives, or repetitive prompts).
+- Do not break character as the narrator. Keep the conclusion concise and immersive.
+
+Continue the story from the narrator’s perspective.
+`;
+  }
+
   const voice =
-    activePlayers.length === 0
-      ? `Narrate a story conclusion, reflecting on the group's fate.`
-      : partySize === 1
+    partySize === 1
       ? `Use second-person narration ("You") for ${activePlayers[0]}.`
       : partySize === 2
       ? `Refer to the players as "you both" or by names: ${activePlayers.join(' and ')}.`
@@ -50,7 +69,7 @@ export function buildNarrationPrompt({
       : `Continue the story in a concise paragraph (50–100 words) for the ${storyPhase} phase. Keep it ${tone}, reactive, and immersive.`;
 
   const deadPlayerInstruction = deadPlayers.length > 0
-    ? `- If a player has recently died, briefly acknowledge their death in the narrative (e.g., "With ${deadPlayers[deadPlayers.length - 1]} fallen, the group presses on ${tone === 'grim' ? 'somberly' : 'resolutely'}").`
+    ? `- If a player has recently died, briefly acknowledge their death in the narrative (e.g., "With ${deadPlayers[deadPlayers.length - 1]} fallen, the group presses on ${tone === 'grim' ? 'somberly' : 'resolutely'}"). Do not allow deceased players to take actions or influence the story further. If the current player (${currentPlayer}) is dead, respond with "You have died and can no longer act. The game continues for the remaining players." and prompt the next active player for input. Do not continue the narrative for deceased players (e.g., no afterlife scenarios, ghostly perspectives, or repetitive prompts).`
     : '';
 
   const newPlayerInstruction = newPlayers.length > 0
@@ -58,17 +77,19 @@ export function buildNarrationPrompt({
     : '';
 
   const inputInstruction = playerInput.trim().length > 0
-    ? `- **Mandatory**: The narrative must directly address and build upon the current player's input ("${playerInput}") from ${currentPlayer}. The story continuation must explicitly reflect their action or decision as the primary driver of the next scene. However, ensure the action is realistic and logical based on the current scenario and the player's inventory (${inventory.join(', ') || 'empty'}). If the player attempts to use an item they don’t have (e.g., "I use a knife" when a knife isn’t in their inventory), respond with a rejection (e.g., "You don’t have a knife.") and suggest alternative actions based on their inventory or environment. If the player asks about the group (e.g., "Who is in the group?"), explicitly list all active players (e.g., "Your group consists of ${activePlayers.join(', ')}.").`
+    ? `- **Mandatory**: The narrative must directly address and build upon the current player's input ("${playerInput}") from ${currentPlayer}. The story continuation must explicitly reflect their action or decision as the primary driver of the next scene. However, ensure the action is realistic and logical based on the current scenario and the player's inventory (${inventory.join(', ') || 'empty'}). If the player attempts to use an item they don’t have (e.g., "I use a knife" when a knife isn’t in their inventory), respond with a rejection (e.g., "You don’t have a knife.") and suggest alternative actions based on their inventory or environment. If the player asks about the group (e.g., "Who is in the group?"), explicitly list all active players (e.g., "Your group consists of ${activePlayers.join(', ')}.") and describe their current state or contributions (e.g., "Mark is clutching his scratched arm, while Sarah scans the horizon for shelter."). If the current player (${currentPlayer}) is dead, respond with "You have died and can no longer act. The game continues for the remaining players." and prompt the next active player for input.`
     : `- If the input is empty, advance the story with a thematic event relevant to the ${genre} genre, ${tone} tone, and ${storyPhase} phase (e.g., in Survival mode, "A storm brews, forcing your group to seek shelter").`;
 
   const sessionInstruction = sessionGoal === 'conclude'
-    ? `- Conclude the story in this segment, resolving major threads in the ${storyPhase} phase. Provide a detailed resolution (e.g., in Survival mode, "After days of struggle, your group is rescued by a passing ship!" or "Your group succumbs to the wilderness, leaving only your story behind."). If the group achieves their goal, describe their success with emotional impact. If they fail, narrate their downfall with gravity.`
+    ? `- Conclude the story in this segment, resolving major threads in the ${storyPhase} phase. Provide a detailed resolution (e.g., in Survival mode, "After days of struggle, your group is rescued by a passing ship!" or "Your group succumbs to the wilderness, leaving only your story behind."). If the group achieves their goal, describe their success with emotional impact. If they fail, narrate their downfall with gravity. Do not prompt for further actions or choices, as the game has ended. Do not continue the narrative beyond the conclusion (e.g., no afterlife scenarios, ghostly perspectives, or repetitive prompts).`
     : `- Pace the story for a ${sessionGoal} session (short: 5–10 minutes, medium: 15–30 minutes, long: 30+ minutes).`;
 
   // Unchangeable rules (universal for all modes)
   const unchangeableRules = `
 - **Role as Game Master**: You are a game master for a multiplayer co-op text-based adventure game. Your role is to craft an immersive, engaging story that evolves based on the group's actions, ensuring all players feel involved.
 - **Player Count Awareness**: Always reference the number of players in the game (${partySize}) and adapt the narrative language dynamically to reflect this count. Use consistent language based on the number of active players: for 1 player, use "you"; for 2 players, use "you both" or their names (${activePlayers.join(' and ') || 'None'}); for 3 or more players, use "your group" or their names (${activePlayers.join(', ') || 'None'}). Ensure the narrative reflects the group's collective presence by describing their shared actions, emotions, and challenges (e.g., for 1 player, "You feel the weight of solitude as you trek through the jungle"; for 2 players, "You both share a wary glance as the storm approaches"; for 3+ players, "Your group huddles close, the storm’s howl drowning out your words."). Adjust challenges, interactions, and descriptions to suit the party size (e.g., for a single player, focus on individual survival; for a larger group, emphasize teamwork and shared struggles). When prompted about the group (e.g., "Who is in the group?"), explicitly list all active players (e.g., "Your group consists of ${activePlayers.join(', ')}.") and describe their current state or contributions (e.g., "Mark is clutching his scratched arm, while Sarah scans the horizon for shelter.").
+- **Game Termination on Group Death**: If all players are dead (${activePlayers.length} === 0), conclude the game immediately with a final narrative scene (e.g., "Your group succumbs to the wilderness, your story ending in the dense jungle as the storm rages on."). Do not prompt for further actions or choices, as the game has ended. Do not continue the narrative beyond death (e.g., no afterlife scenarios, ghostly perspectives, or repetitive prompts).
+- **Prevent Dead Player Interaction**: Do not allow deceased players to take actions or influence the story further. If the current player (${currentPlayer}) is dead, respond with "You have died and can no longer act. The game continues for the remaining players." and prompt the next active player for input. Do not continue the narrative for deceased players (e.g., no afterlife scenarios, ghostly perspectives, or repetitive prompts).
 - **Immersive Narration**: Always describe the environment, characters, and events with vivid, sensory-rich detail (e.g., sights, sounds, smells, textures) to immerse the players in the world (e.g., "The air is heavy with the scent of wet earth, mosquitos whining in your ears as the distant river roars.").
 - **Group Dynamics**: Address the group as a whole ("your group," "you all") in the narrative, describing their shared physical and emotional state (e.g., "You’re all trembling, the cold seeping into your bones as much as the dread."). Incorporate each player’s action into the collective story, ensuring it impacts the group (e.g., "Jane’s decision to explore the cave leads you all into darkness, the air growing colder with each step.").
 - **Concise Input Interpretation**: Interpret short player inputs (e.g., "search cave," "talk to NPC," "use rope") logically within the context of the story, inventory, and group dynamic. Reject invalid actions (e.g., "You don’t have a knife.") and suggest alternatives based on the environment and inventory.
@@ -105,7 +126,7 @@ export function buildNarrationPrompt({
 - **Setting**: Generate a horror setting with eerie, unsettling elements (e.g., a haunted cabin during a blizzard, a derelict submarine with unnatural creatures, a possessed small town under a blood moon, an underground bunker with a shapeshifter, a gothic cathedral with a demonic ritual).
 - **Challenges**: Introduce escalating horror (e.g., "The whispers grow louder as the lights flicker."), environmental traps (e.g., "The cabin floorboards collapse, revealing a crawlspace with scratching below."), psychological threats (e.g., "Your group hears a voice mimicking one of you—can you trust each other?"), and time pressure (e.g., "You must escape before dawn, when the horrors grow stronger."). Include dynamic challenges every few turns.
 - **NPCs**: Create horror NPCs with ambiguous motives (e.g., "A trembling scientist in the bunker begs your group to seal the lab, but his eyes flicker unnaturally—he might be the shapeshifter.").
-- **Goal**: Escape or banish the horror (e.g., "Escape the submarine before it implodes."), with the timeline and steps determined by the setting (e.g., "Find 5 clues to banish the spirit."). Track progress through narrative milestones (e.g., "You’ve found 2 of 5 clues to banish the spirit—one more to uncover its name.").
+- **Goal**: Escape or banish the horror (e.g., "Escape the submarine before it implodes."), with the timeline and steps determined by the setting (e.g., "Find 5 clues to banish the spirit."). Track progress through narrative milestones (e.g., "You’ve found 2 of 5 clues to banish the spirit—one more to uncover its name."). If a player dies, do not continue their narrative into the afterlife or beyond death—focus on the remaining players or conclude the game if all are dead.
 `;
       break;
     case 'sci-fi':
