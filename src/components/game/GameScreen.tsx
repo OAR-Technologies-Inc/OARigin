@@ -94,7 +94,6 @@ const GameScreen: React.FC = () => {
       setLoadingStory(true);
 
       try {
-        const previousSegment = storySegments[storySegments.length - 1]?.aiResponse || '';
         const deadPlayers = players.filter(p => p.status === 'dead').map(p => p.username);
         
         const { text } = await generateStoryContinuation({
@@ -147,7 +146,6 @@ const GameScreen: React.FC = () => {
     setLoadingStory(true);
 
     try {
-      const previousSegment = storySegments[storySegments.length - 1]?.aiResponse || '';
       const deadPlayers = players.filter(p => p.status === 'dead').map(p => p.username);
       
       const { text, playerDied } = await generateStoryContinuation({
