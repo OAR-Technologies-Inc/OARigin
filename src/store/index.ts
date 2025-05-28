@@ -200,15 +200,21 @@ export const useGameStore = create<GameState>((set, get) => ({
     })),
 
   generateTempUser: (username) =>
-    set({
-      currentUser: {
-        id: uuidv4(),
-        username,
-        avatar: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${username}`,
-        oarWalletLinked: false,
-        status: 'alive'
-      },
-      isAuthenticated: true
+    set((state) => {
+      // Only generate a new user if there isn't one already
+      if (!state.currentUser) {
+        return {
+          currentUser: {
+            id: uuidv4(),
+            username,
+            avatar: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${username}`,
+            oarWalletLinked: false,
+            status: 'alive'
+          },
+          isAuthenticated: true
+        };
+      }
+      return state;
     }),
 
   createTempRoom: (genre) => {
