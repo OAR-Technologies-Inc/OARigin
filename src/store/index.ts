@@ -171,7 +171,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     const { currentUser } = get();
     if (!currentUser) throw new Error('No user logged in');
 
-    const roomCode = Math.floor(1000 + Math.random() * 9000).toString();
+    const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
     
     const { data: room, error } = await supabase
       .from('rooms')
