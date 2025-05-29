@@ -247,16 +247,16 @@ useEffect(() => {
     }
   });
 
-    const blob = new Blob([transcriptText], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'oarigin-adventure-${currentRoom?.code || 'transcript'}.txt';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
+  const blob = new Blob([transcriptText], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `oarigin-adventure-${currentRoom?.code || 'transcript'}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
 
   const currentPlayer = players[currentPlayerIndex]?.username || 'Player';
   const isCurrentPlayerDead = players[currentPlayerIndex]?.status === 'dead';
