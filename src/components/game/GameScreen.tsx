@@ -7,11 +7,16 @@ import ChatSidebar from './ChatSidebar';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
 import { StorySegment, GameState } from '../../types';
-import {
-  generateStoryBeginning,
-  generateStoryContinuation,
-} from '../../utils/mockAi';
+import { buildNarrationPrompt } from '../lib/promptBuilder';
 import { v4 as uuidv4 } from 'uuid';
+
+// Simulated GPT API call (replace with your actual GPT integration)
+const fetchAIResponse = async (prompt: string): Promise<string> => {
+  // Replace this with your actual GPT API call
+  // For now, simulating a response that might include [PLAYER_DEATH] or [GAME_ENDED]
+  const simulatedResponse = "The creature lunges at you, its claws sinking deep. You fall, your vision fading to black. [PLAYER_DEATH]";
+  return simulatedResponse;
+};
 
 const GameScreen: React.FC = () => {
   const navigate = useNavigate();
@@ -28,7 +33,10 @@ const GameScreen: React.FC = () => {
     nextPlayerTurn,
     clearNewPlayers,
     setPlayerDeath,
-    checkGameEnd
+    checkGameEnd,
+    updateProgress,
+    setGameState,
+    progress,
   } = useGameStore();
 
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -48,11 +56,25 @@ const GameScreen: React.FC = () => {
         setLoadingStory(true);
 
         try {
-          const initialStory = await generateStoryBeginning(
-            currentRoom.genreTag,
-            players.map(p => p.username),
-            currentRoom.gameMode
-          );
+          const prompt = buildNarrationPrompt({
+            genre: currentRoom.genreTag,
+            players: players.map(p => p.username),
+            storyLog: [],
+            currentPlayer: '',
+            playerInput: '',
+            deadPlayers: [],
+            newPlayers: players.map(p => p.username),
+            gameMode: currentRoom.gameMode,
+            tone: 'tense',
+            playerRoles: {},
+            storyPhase: 'opening',
+            sessionGoal: 'medium',
+            inventory: [],
+            turnCount: 0,
+            progress,
+          });
+
+          const initialStory = await fetchAIResponse(prompt);
 
           const newSegment: StorySegment = {
             id: uuidv4(),
@@ -94,8 +116,8 @@ const GameScreen: React.FC = () => {
 
       try {
         const deadPlayers = players.filter(p => p.status === 'dead').map(p => p.username);
-        
-        const { text } = await generateStoryContinuation({
+
+        const prompt = buildNarrationPrompt({
           genre: currentRoom.genreTag,
           players: players.map(p => p.username),
           storyLog: storySegments.map(s => s.aiResponse || s.content).filter(s => s),
@@ -103,8 +125,17 @@ const GameScreen: React.FC = () => {
           playerInput: '',
           deadPlayers,
           newPlayers: newPlayers.map(p => p.username),
-          gameMode: currentRoom.gameMode
+          gameMode: currentRoom.gameMode,
+          tone: 'tense',
+          playerRoles: {},
+          storyPhase: storySegments.length < 3 ? 'opening' : storySegments.length < 6 ? 'rising' : storySegments.length < 9 ? 'climax' : 'resolution',
+          sessionGoal: 'medium',
+          inventory: [],
+          turnCount: storySegments.length,
+          progress,
         });
+
+        const text = await fetchAIResponse(prompt);
 
         const newSegment: StorySegment = {
           id: uuidv4(),
@@ -146,8 +177,8 @@ const GameScreen: React.FC = () => {
 
     try {
       const deadPlayers = players.filter(p => p.status === 'dead').map(p => p.username);
-      
-      const { text, playerDied } = await generateStoryContinuation({
+
+      const prompt = buildNarrationPrompt({
         genre: currentRoom.genreTag,
         players: players.map(p => p.username),
         storyLog: storySegments.map(s => s.aiResponse || s.content).filter(s => s),
@@ -155,22 +186,46 @@ const GameScreen: React.FC = () => {
         playerInput: choice,
         deadPlayers,
         newPlayers: [],
-        gameMode: currentRoom.gameMode
+        gameMode: currentRoom.gameMode,
+        tone: 'tense',
+        playerRoles: {},
+        storyPhase: storySegments.length < 3 ? 'opening' : storySegments.length < 6 ? 'rising' : storySegments.length < 9 ? 'climax' : 'resolution',
+        sessionGoal: 'medium',
+        inventory: [],
+        turnCount: storySegments.length,
+        progress,
       });
+
+      const text = await fetchAIResponse(prompt);
+      let cleanText = text;
+
+      // Check for [PLAYER_DEATH] token
+      let playerDied = false;
+      if (cleanText.includes('[PLAYER_DEATH]')) {
+        cleanText = cleanText.replace('[PLAYER_DEATH]', '');
+        playerDied = true;
+        setPlayerDeath(players[currentPlayerIndex].username);
+      }
+
+      // Check for [GAME_ENDED] token
+      if (cleanText.includes('[GAME_ENDED]')) {
+        cleanText = cleanText.replace('[GAME_ENDED]', '');
+        setGameState(GameState.ENDED);
+      }
+
+      // Parse AI response for progress updates (e.g., clues found, distance traveled)
+      const updatedProgress = parseProgressUpdates(cleanText, currentRoom.genreTag);
+      updateProgress(updatedProgress);
 
       const newSegment: StorySegment = {
         id: uuidv4(),
         roomId: currentRoom.id,
         content: choice,
-        aiResponse: text,
+        aiResponse: cleanText,
         decisionType: 'freestyle',
         options: [],
         createdAt: new Date().toISOString()
       };
-
-      if (playerDied) {
-        setPlayerDeath(players[currentPlayerIndex].username);
-      }
 
       setTempSegment(newSegment);
       nextPlayerTurn();
@@ -285,6 +340,40 @@ const GameScreen: React.FC = () => {
       <ChatSidebar isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
     </div>
   );
+};
+
+// Utility to parse progress updates from AI response
+const parseProgressUpdates = (aiResponse: string, genre: string): Partial<GameProgress> => {
+  const updates: Partial<GameProgress> = {};
+
+  // Simple parsing logic (adjust based on your AI response format)
+  // For example, look for specific keywords indicating progress
+  if (genre.toLowerCase() === 'survival') {
+    if (aiResponse.toLowerCase().includes('you travel') || aiResponse.toLowerCase().includes('miles')) {
+      updates.milesTraveled = (progress.milesTraveled || 0) + 1;
+    }
+    if (aiResponse.toLowerCase().includes('day passes') || aiResponse.toLowerCase().includes('another day')) {
+      updates.daysSurvived = (progress.daysSurvived || 0) + 1;
+    }
+  } else if (genre.toLowerCase() === 'fantasy') {
+    if (aiResponse.toLowerCase().includes('artifact') || aiResponse.toLowerCase().includes('relic')) {
+      updates.artifactsFound = (progress.artifactsFound || 0) + 1;
+    }
+  } else if (genre.toLowerCase() === 'horror' || genre.toLowerCase() === 'mystery') {
+    if (aiResponse.toLowerCase().includes('clue') || aiResponse.toLowerCase().includes('evidence')) {
+      updates.cluesFound = (progress.cluesFound || 0) + 1;
+    }
+  } else if (genre.toLowerCase() === 'sci-fi') {
+    if (aiResponse.toLowerCase().includes('node') || aiResponse.toLowerCase().includes('disabled')) {
+      updates.nodesDisabled = (progress.nodesDisabled || 0) + 1;
+    }
+  } else if (genre.toLowerCase() === 'adventure') {
+    if (aiResponse.toLowerCase().includes('you progress') || aiResponse.toLowerCase().includes('closer to')) {
+      updates.distanceCovered = (progress.distanceCovered || 0) + 10;
+    }
+  }
+
+  return updates;
 };
 
 export default GameScreen;
