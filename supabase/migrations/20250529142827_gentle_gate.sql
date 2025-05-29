@@ -1,6 +1,7 @@
--- Drop existing policies and functions to avoid conflicts
+-- Drop existing policies, functions, and triggers to avoid conflicts
 DROP FUNCTION IF EXISTS handle_new_user CASCADE;
 DROP FUNCTION IF EXISTS update_updated_at_column CASCADE;
+DROP TRIGGER IF EXISTS on_session_active ON public.sessions;
 
 -- Explicitly drop known policies as a fallback
 DROP POLICY IF EXISTS "Users can create their own profile" ON profiles;
