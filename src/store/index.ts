@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { GameGenre, Room, User, StorySegment, Vote, RoomStatus, GameMode, GameState, GameProgress } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
-interface GameState {
+interface GameStoreState {
   // User state
   currentUser: User | null;
   isAuthenticated: boolean;
@@ -44,7 +44,7 @@ interface GameState {
   updateProgress: (updates: Partial<GameProgress>) => void;
 }
 
-export const useGameStore = create<GameState>((set, get) => ({
+export const useGameStore = create<GameStoreState>((set, get) => ({
   // Initial state
   currentUser: null,
   isAuthenticated: false,
@@ -133,7 +133,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set((state) => {
       const alivePlayers = state.players.filter(p => p.status === 'alive');
       if (alivePlayers.length === 0) {
-        return { currentPlayerIndex: 0 };
+        return { currentPlayerIndex: 0, gameState: GameState.ENDED };
       }
       
       let nextIndex = state.currentPlayerIndex;
@@ -153,9 +153,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         p.username === playerName ? { ...p, status: 'dead' as const } : p
       );
 
+      const updatedDeadPlayers = [...state.deadPlayers, playerName];
+      const alivePlayers = updatedPlayers.filter(p => p.status === 'alive');
+      
+      // Check if all players are dead and update game state
+      const newGameState = alivePlayers.length === 0 ? GameState.ENDED : state.gameState;
+
       return {
         players: updatedPlayers,
-        deadPlayers: [...state.deadPlayers, playerName]
+        deadPlayers: updatedDeadPlayers,
+        gameState: newGameState,
+        currentPlayerIndex: newGameState === GameState.ENDED ? 0 : state.currentPlayerIndex
       };
     }),
 
@@ -163,7 +171,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set((state) => {
       const alivePlayers = state.players.filter(p => p.status === 'alive');
       if (alivePlayers.length === 0) {
-        return { gameState: GameState.ENDED };
+        return { gameState: GameState.ENDED, currentPlayerIndex: 0 };
       }
 
       const { currentRoom, progress } = state;
@@ -191,7 +199,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           break;
       }
 
-      return shouldEnd ? { gameState: GameState.ENDED } : state;
+      return shouldEnd ? { gameState: GameState.ENDED, currentPlayerIndex: 0 } : state;
     }),
 
   updateProgress: (updates) =>
@@ -201,8 +209,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   generateTempUser: (username) =>
     set((state) => {
-      // Only generate a new user if there isn't one already
-      if (!state.currentUser) {
+      // Only generate a new user if there isn't one already and the game hasn't started
+      if (!state.currentUser && state.gameState !== GameState.PLAYING) {
         return {
           currentUser: {
             id: uuidv4(),
