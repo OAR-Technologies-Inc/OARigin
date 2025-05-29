@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MessageSquare, Save, Users, ArrowLeft } from 'lucide-react';
-import { useGameStore } from '../../store';
+import { useGameStore } from '../store';
 import StoryConsole from './StoryConsole';
 import ChatSidebar from './ChatSidebar';
 import Button from '../ui/Button';
@@ -38,11 +38,11 @@ const GameScreen: React.FC = () => {
 
   useEffect(() => {
     console.log('GameScreen state:', { currentRoom, gameState, players, currentPlayerIndex });
-    if (!currentRoom || gameState === GameState.ENDED) {
-      console.log('Navigating to / because currentRoom is null or gameState is ENDED');
+    if (!currentRoom) {
+      console.log('Navigating to / because currentRoom is null');
       navigate('/');
     }
-  }, [currentRoom, gameState, navigate]);
+  }, [currentRoom, navigate]);
 
   useEffect(() => {
     const initializeStory = async () => {
