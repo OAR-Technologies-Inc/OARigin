@@ -80,6 +80,8 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Trigger for updating last seen
+DROP TRIGGER IF EXISTS on_session_active ON public.sessions;
+
 CREATE TRIGGER on_session_active
   AFTER UPDATE OF last_active_at ON public.sessions
   FOR EACH ROW
