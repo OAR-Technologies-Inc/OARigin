@@ -388,7 +388,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     };
   },
 
-  joinMatchmaking: async (genre: GameGenre) => {
+  joinMatchmaking; async (genre: GameGenre) => {
     const { currentUser } = get();
     if (!currentUser) throw new Error('No user logged in');
 
