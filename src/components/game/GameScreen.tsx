@@ -238,13 +238,13 @@ useEffect(() => {
     }
   };
 
-  const handleExportTranscript = () => {
+  const handleExportTranscript = () = {
     let transcriptText = '# OARigin Adventure Transcript\n\n';
 
     storySegments.forEach((segment) => {
       transcriptText += segment.aiResponse + '\n\n';
       if (segment.content) {
-        transcriptText += ${segment.content}\n\n;
+        transcriptText += > ${segment.content}\n\n;
       }
     });
 
