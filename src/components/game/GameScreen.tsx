@@ -7,7 +7,7 @@ import ChatSidebar from './ChatSidebar';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
 import { StorySegment, GameState } from '../../types';
-import { buildNarrationPrompt } from '../lib/promptBuilder';
+import { buildNarrationPrompt } from '../../utils/promptBuilder';
 import { v4 as uuidv4 } from 'uuid';
 
 // Simulated GPT API call (replace with your actual GPT integration)
