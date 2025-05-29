@@ -3,7 +3,33 @@ DROP FUNCTION IF EXISTS handle_new_user CASCADE;
 DROP FUNCTION IF EXISTS handle_user_active CASCADE;
 DROP FUNCTION IF EXISTS update_updated_at_column CASCADE;
 
--- Drop all existing policies on relevant tables using a cursor to avoid conflicts
+-- Explicitly drop known policies as a fallback
+DROP POLICY IF EXISTS "Users can create their own profile" ON profiles;
+DROP POLICY IF EXISTS "Users can view their own profile" ON profiles;
+DROP POLICY IF EXISTS "Users can read their own profile" ON profiles;
+DROP POLICY IF EXISTS "Users can update their own profile" ON profiles;
+DROP POLICY IF EXISTS "Users can insert their own profile" ON profiles;
+DROP POLICY IF EXISTS "Anyone can read profiles" ON profiles;
+DROP POLICY IF EXISTS "Public profiles are viewable by everyone" ON profiles;
+DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
+
+DROP POLICY IF EXISTS "Users can create their own stats" ON user_stats;
+DROP POLICY IF EXISTS "Users can view their own stats" ON user_stats;
+DROP POLICY IF EXISTS "Users can read their own stats" ON user_stats;
+DROP POLICY IF EXISTS "System can update user stats" ON user_stats;
+
+DROP POLICY IF EXISTS "Users can create their own sessions" ON sessions;
+DROP POLICY IF EXISTS "Users can view their own sessions" ON sessions;
+DROP POLICY IF EXISTS "Users can read their active sessions" ON sessions;
+DROP POLICY IF EXISTS "Users can manage their sessions" ON sessions;
+
+DROP POLICY IF EXISTS "Users can create their own transcripts" ON transcripts;
+DROP POLICY IF EXISTS "Users can view their own transcripts" ON transcripts;
+
+DROP POLICY IF EXISTS "Users can view open rooms" ON rooms;
+DROP POLICY IF EXISTS "Hosts can manage their rooms" ON rooms;
+
+-- Drop all existing policies on relevant tables using a cursor as a secondary measure
 DO $$ 
 DECLARE
   policy_rec RECORD;
@@ -59,7 +85,7 @@ BEGIN
   END LOOP;
 END $$;
 
--- Create rooms table (from File 1)
+-- Create rooms table
 CREATE TABLE IF NOT EXISTS public.rooms (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   code text UNIQUE NOT NULL,
@@ -212,7 +238,7 @@ BEGIN
   END IF;
 END $$;
 
--- Create indexes (from File 7)
+-- Create indexes
 CREATE INDEX IF NOT EXISTS profiles_username_idx ON profiles (username);
 CREATE INDEX IF NOT EXISTS profiles_created_at_idx ON profiles (created_at);
 CREATE INDEX IF NOT EXISTS user_stats_user_id_idx ON user_stats (user_id);
@@ -227,7 +253,7 @@ ALTER TABLE public.user_stats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transcripts ENABLE ROW LEVEL SECURITY;
 
--- RLS policies for rooms (from File 1)
+-- RLS policies for rooms
 CREATE POLICY "Users can view open rooms"
   ON public.rooms
   FOR SELECT
@@ -240,7 +266,7 @@ CREATE POLICY "Hosts can manage their rooms"
   TO authenticated
   USING (host_id = auth.uid());
 
--- RLS policies for profiles (from File 8)
+-- RLS policies for profiles
 CREATE POLICY "Public profiles are viewable by everyone"
   ON public.profiles
   FOR SELECT
@@ -260,7 +286,7 @@ CREATE POLICY "Users can update own profile"
   USING (auth.uid() = id)
   WITH CHECK (auth.uid() = id);
 
--- RLS policies for user_stats (from File 8)
+-- RLS policies for user_stats
 CREATE POLICY "Users can create their own stats"
   ON public.user_stats
   FOR INSERT
@@ -280,7 +306,7 @@ CREATE POLICY "System can update user stats"
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
--- RLS policies for sessions (from File 8)
+-- RLS policies for sessions
 CREATE POLICY "Users can create their own sessions"
   ON public.sessions
   FOR INSERT
@@ -294,7 +320,7 @@ CREATE POLICY "Users can manage their sessions"
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
--- RLS policies for transcripts (from File 8)
+-- RLS policies for transcripts
 CREATE POLICY "Users can create their own transcripts"
   ON public.transcripts
   FOR INSERT
@@ -307,7 +333,7 @@ CREATE POLICY "Users can view their own transcripts"
   TO authenticated
   USING (auth.uid() = user_id);
 
--- Create trigger functions (from File 7 and File 8)
+-- Create trigger functions
 CREATE OR REPLACE FUNCTION public.update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -336,7 +362,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Create triggers (from File 7 and File 8)
+-- Create triggers
 CREATE TRIGGER update_profiles_updated_at
   BEFORE UPDATE ON public.profiles
   FOR EACH ROW
