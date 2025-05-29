@@ -1,5 +1,5 @@
 import { buildNarrationPrompt } from '../utils/promptBuilder';
-import { User, Room, GameGenre } from '../types';
+import { User, Room, GameGenre, GameState } from '../types';
 
 const fallbackResponses = [
   "The story takes an unexpected turn as ancient magic interferes with the narrative...",
