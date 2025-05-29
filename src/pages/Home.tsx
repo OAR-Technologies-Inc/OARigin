@@ -15,7 +15,7 @@ const Home: React.FC = () => {
     currentUser, 
     isAuthenticated, 
     generateTempUser, 
-    createTempRoom, 
+    createRoom, 
     joinRoom 
   } = useGameStore();
   
@@ -25,14 +25,21 @@ const Home: React.FC = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [selectedGenre, setSelectedGenre] = useState<GameGenre>(GameGenre.FANTASY);
   
-  const handleCreateRoom = () => {
+  const handleCreateRoom = async () => {
     if (!isAuthenticated) {
       if (!username.trim()) return;
       generateTempUser(username);
     }
     
-    const code = createTempRoom(selectedGenre);
-    navigate('/lobby');
+    try {
+      setIsCreating(true);
+      await createRoom(selectedGenre, true);
+      navigate('/lobby');
+    } catch (error) {
+      console.error('Failed to create room:', error);
+    } finally {
+      setIsCreating(false);
+    }
   };
   
   const handleJoinRoom = () => {
