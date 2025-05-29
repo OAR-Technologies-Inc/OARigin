@@ -238,7 +238,7 @@ useEffect(() => {
     }
   };
 
-  const handleExportTranscript = () =  {
+  const handleExportTranscript = () => {
     let transcriptText = '# OARigin Adventure Transcript\n\n';
 
     storySegments.forEach((segment) => {
