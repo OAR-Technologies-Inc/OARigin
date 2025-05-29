@@ -248,13 +248,13 @@ if (currentUser) {
   set({
     currentRoom: {
       ...room,
-      genreTag: room.genre_tag, // ✅ map correctly here
-    },
+      genreTag: room.genre_tag,
+    }, // ✅ COMMA HERE
     isHost: room.host_id === userId,
     players: [{ ...currentUser, status: 'alive' }],
     previousPlayers: [{ ...currentUser, status: 'alive' }],
     newPlayers: [],
-    currentPlayerIndex: 0
+    currentPlayerIndex: 0,
   });
 }
 
