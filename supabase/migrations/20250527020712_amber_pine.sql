@@ -1,17 +1,30 @@
 /*
-  # Initial Schema Setup for OARigin
-
+  # Initial Schema Setup
+  
   1. New Tables
-    - Enhanced users table with additional profile fields
-    - user_stats for tracking player progress
-    - sessions for managing active game sessions
-    - transcripts for storing completed game stories
-
+    - rooms (for game sessions)
+    - profiles (extended user data)
+    - user_stats (player statistics)
+    - sessions (active game sessions)
+    
   2. Security
     - Enable RLS on all tables
-    - Add policies for authenticated users
-    - Secure access patterns for game data
+    
+  3. Triggers
+    - Update last seen timestamp
 */
+
+-- Create rooms table first since it's referenced by sessions
+CREATE TABLE IF NOT EXISTS public.rooms (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  code text UNIQUE NOT NULL,
+  status text NOT NULL DEFAULT 'open',
+  current_narrative_state text,
+  genre_tag text NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  host_id uuid NOT NULL,
+  CONSTRAINT valid_status CHECK (status IN ('open', 'in_progress', 'closed', 'abandoned'))
+);
 
 -- Create enhanced users table
 CREATE TABLE IF NOT EXISTS public.profiles (
@@ -49,49 +62,10 @@ CREATE TABLE IF NOT EXISTS public.sessions (
 );
 
 -- Enable RLS
+ALTER TABLE public.rooms ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_stats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sessions ENABLE ROW LEVEL SECURITY;
-
--- Profiles policies
-CREATE POLICY "Users can read their own profile"
-  ON public.profiles
-  FOR SELECT
-  TO authenticated
-  USING (auth.uid() = id);
-
-CREATE POLICY "Users can update their own profile"
-  ON public.profiles
-  FOR UPDATE
-  TO authenticated
-  USING (auth.uid() = id)
-  WITH CHECK (auth.uid() = id);
-
--- User stats policies
-CREATE POLICY "Users can read their own stats"
-  ON public.user_stats
-  FOR SELECT
-  TO authenticated
-  USING (user_id = auth.uid());
-
-CREATE POLICY "System can update user stats"
-  ON public.user_stats
-  FOR ALL
-  TO authenticated
-  USING (user_id = auth.uid());
-
--- Sessions policies
-CREATE POLICY "Users can read their active sessions"
-  ON public.sessions
-  FOR SELECT
-  TO authenticated
-  USING (user_id = auth.uid() AND is_active = true);
-
-CREATE POLICY "Users can manage their sessions"
-  ON public.sessions
-  FOR ALL
-  TO authenticated
-  USING (user_id = auth.uid());
 
 -- Function to update last seen
 CREATE OR REPLACE FUNCTION public.handle_user_active()
