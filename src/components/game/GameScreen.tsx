@@ -94,6 +94,8 @@ const GameScreen: React.FC = () => {
     initializeStory();
   }, [currentRoom, storySegments, loadingStory, players]);
 
-  // [unchanged code continues...]
-
+    // [unchanged code continues...]
+  
+  }
+  
   export default GameScreen;
