@@ -244,7 +244,7 @@ const GameScreen: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = oarigin-adventure-${currentRoom?.code || 'transcript'}.txt;
+    a.download = `oarigin-adventure-${currentRoom?.code || 'transcript'}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
