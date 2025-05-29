@@ -68,10 +68,3 @@ CREATE TRIGGER trigger_match_players
     AFTER INSERT ON public.waiting_pool
     FOR EACH ROW
     EXECUTE FUNCTION match_players();
-
--- Add RLS policies for waiting_pool
-CREATE POLICY "Users can view waiting pool"
-    ON public.waiting_pool
-    FOR SELECT
-    TO authenticated
-    USING (true);
