@@ -1,152 +1,342 @@
--- Drop existing policies and functions
+-- Drop existing policies and functions to avoid conflicts
 DROP FUNCTION IF EXISTS handle_new_user CASCADE;
 DROP FUNCTION IF EXISTS handle_user_active CASCADE;
-DROP FUNCTION IF EXISTS match_players CASCADE;
 DROP FUNCTION IF EXISTS update_updated_at_column CASCADE;
 
--- Drop existing policies with exact names
-DROP POLICY IF EXISTS "Public profiles are viewable by everyone" ON public.profiles;
-DROP POLICY IF EXISTS "Users can insert their own profile" ON public.profiles;
-DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
-DROP POLICY IF EXISTS "Users can create their own profile" ON public.profiles;
-DROP POLICY IF EXISTS "Users can view their own profile" ON public.profiles;
-DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
+-- Drop all existing policies on relevant tables using a cursor to avoid conflicts
+DO $$ 
+DECLARE
+  policy_rec RECORD;
+BEGIN
+  -- Drop policies on profiles table
+  FOR policy_rec IN (
+    SELECT policyname 
+    FROM pg_policies 
+    WHERE schemaname = 'public' 
+    AND tablename = 'profiles'
+  ) LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON profiles', policy_rec.policyname);
+  END LOOP;
 
-DROP POLICY IF EXISTS "Users can create their own stats" ON public.user_stats;
-DROP POLICY IF EXISTS "Users can view their own stats" ON public.user_stats;
-DROP POLICY IF EXISTS "System can update user stats" ON public.user_stats;
+  -- Drop policies on user_stats table
+  FOR policy_rec IN (
+    SELECT policyname 
+    FROM pg_policies 
+    WHERE schemaname = 'public' 
+    AND tablename = 'user_stats'
+  ) LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON user_stats', policy_rec.policyname);
+  END LOOP;
 
-DROP POLICY IF EXISTS "Users can create their own sessions" ON public.sessions;
-DROP POLICY IF EXISTS "Users can view their own sessions" ON public.sessions;
-DROP POLICY IF EXISTS "Users can manage their sessions" ON public.sessions;
+  -- Drop policies on sessions table
+  FOR policy_rec IN (
+    SELECT policyname 
+    FROM pg_policies 
+    WHERE schemaname = 'public' 
+    AND tablename = 'sessions'
+  ) LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON sessions', policy_rec.policyname);
+  END LOOP;
 
-DROP POLICY IF EXISTS "Users can create their own transcripts" ON public.transcripts;
-DROP POLICY IF EXISTS "Users can view their own transcripts" ON public.transcripts;
+  -- Drop policies on transcripts table
+  FOR policy_rec IN (
+    SELECT policyname 
+    FROM pg_policies 
+    WHERE schemaname = 'public' 
+    AND tablename = 'transcripts'
+  ) LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON transcripts', policy_rec.policyname);
+  END LOOP;
 
--- Create or update tables (preserving existing data)
-CREATE TABLE IF NOT EXISTS public.profiles (
-  id UUID PRIMARY KEY REFERENCES auth.users(id),
-  username TEXT NOT NULL,
-  avatar_url TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+  -- Drop policies on rooms table
+  FOR policy_rec IN (
+    SELECT policyname 
+    FROM pg_policies 
+    WHERE schemaname = 'public' 
+    AND tablename = 'rooms'
+  ) LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON rooms', policy_rec.policyname);
+  END LOOP;
+END $$;
+
+-- Create rooms table (from File 1)
+CREATE TABLE IF NOT EXISTS public.rooms (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  code text UNIQUE NOT NULL,
+  status text NOT NULL DEFAULT 'open',
+  current_narrative_state text,
+  genre_tag text NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  host_id uuid NOT NULL,
+  CONSTRAINT valid_status CHECK (status IN ('open', 'in_progress', 'closed', 'abandoned'))
 );
 
-CREATE TABLE IF NOT EXISTS public.user_stats (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  genre TEXT NOT NULL,
-  stories_completed INTEGER DEFAULT 0,
-  decisions_made INTEGER DEFAULT 0,
-  consensus_rate NUMERIC DEFAULT 0,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
+-- Create profiles table if it doesn't exist (preserving existing data)
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 
+    FROM pg_tables 
+    WHERE schemaname = 'public' 
+    AND tablename = 'profiles'
+  ) THEN
+    CREATE TABLE profiles (
+      id UUID PRIMARY KEY REFERENCES auth.users(id),
+      username TEXT NOT NULL UNIQUE,
+      avatar_url TEXT,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      last_seen_at TIMESTAMP WITH TIME ZONE,
+      titles text[] DEFAULT ARRAY[]::text[],
+      games_completed INTEGER DEFAULT 0,
+      CONSTRAINT username_length CHECK (char_length(username) >= 3)
+    );
+  END IF;
+END $$;
 
-CREATE TABLE IF NOT EXISTS public.sessions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  room_id UUID NOT NULL REFERENCES public.rooms(id) ON DELETE CASCADE,
-  last_active_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  is_active BOOLEAN DEFAULT true,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
+-- Create user_stats table if it doesn't exist
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 
+    FROM pg_tables 
+    WHERE schemaname = 'public' 
+    AND tablename = 'user_stats'
+  ) THEN
+    CREATE TABLE user_stats (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL,
+      genre TEXT NOT NULL,
+      stories_completed INTEGER DEFAULT 0,
+      decisions_made INTEGER DEFAULT 0,
+      consensus_rate DECIMAL DEFAULT 0,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+  END IF;
+END $$;
 
-CREATE TABLE IF NOT EXISTS public.transcripts (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  room_id TEXT NOT NULL,
-  story_text TEXT NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
+-- Create sessions table if it doesn't exist
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 
+    FROM pg_tables 
+    WHERE schemaname = 'public' 
+    AND tablename = 'sessions'
+  ) THEN
+    CREATE TABLE sessions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL,
+      room_id UUID NOT NULL,
+      last_active_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+  END IF;
+END $$;
 
--- Create indexes
-CREATE INDEX IF NOT EXISTS profiles_username_idx ON public.profiles(username);
-CREATE INDEX IF NOT EXISTS profiles_created_at_idx ON public.profiles(created_at);
-CREATE INDEX IF NOT EXISTS user_stats_user_id_idx ON public.user_stats(user_id);
-CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON public.sessions(user_id);
-CREATE INDEX IF NOT EXISTS sessions_room_id_idx ON public.sessions(room_id);
-CREATE INDEX IF NOT EXISTS transcripts_user_id_idx ON public.transcripts(user_id);
+-- Create transcripts table if it doesn't exist
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 
+    FROM pg_tables 
+    WHERE schemaname = 'public' 
+    AND tablename = 'transcripts'
+  ) THEN
+    CREATE TABLE transcripts (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL,
+      room_id TEXT NOT NULL,
+      story_text TEXT NOT NULL,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+  END IF;
+END $$;
 
--- Enable RLS
+-- Add foreign key constraints for dependent tables (idempotent creation)
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 
+    FROM pg_constraint 
+    WHERE conname = 'user_stats_user_id_fkey' 
+    AND conrelid = 'user_stats'::regclass
+  ) THEN
+    ALTER TABLE user_stats
+    ADD CONSTRAINT user_stats_user_id_fkey
+    FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE;
+  END IF;
+END $$;
+
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 
+    FROM pg_constraint 
+    WHERE conname = 'sessions_user_id_fkey' 
+    AND conrelid = 'sessions'::regclass
+  ) THEN
+    ALTER TABLE sessions
+    ADD CONSTRAINT sessions_user_id_fkey
+    FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE;
+  END IF;
+END $$;
+
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 
+    FROM pg_constraint 
+    WHERE conname = 'sessions_room_id_fkey' 
+    AND conrelid = 'sessions'::regclass
+  ) THEN
+    ALTER TABLE sessions
+    ADD CONSTRAINT sessions_room_id_fkey
+    FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE;
+  END IF;
+END $$;
+
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 
+    FROM pg_constraint 
+    WHERE conname = 'transcripts_user_id_fkey' 
+    AND conrelid = 'transcripts'::regclass
+  ) THEN
+    ALTER TABLE transcripts
+    ADD CONSTRAINT transcripts_user_id_fkey
+    FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE;
+  END IF;
+END $$;
+
+-- Create indexes (from File 7)
+CREATE INDEX IF NOT EXISTS profiles_username_idx ON profiles (username);
+CREATE INDEX IF NOT EXISTS profiles_created_at_idx ON profiles (created_at);
+CREATE INDEX IF NOT EXISTS user_stats_user_id_idx ON user_stats (user_id);
+CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions (user_id);
+CREATE INDEX IF NOT EXISTS sessions_room_id_idx ON sessions (room_id);
+CREATE INDEX IF NOT EXISTS transcripts_user_id_idx ON transcripts (user_id);
+
+-- Enable RLS on all tables
+ALTER TABLE public.rooms ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_stats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transcripts ENABLE ROW LEVEL SECURITY;
 
--- Create policies
+-- RLS policies for rooms (from File 1)
+CREATE POLICY "Users can view open rooms"
+  ON public.rooms
+  FOR SELECT
+  TO authenticated
+  USING (status = 'open' OR host_id = auth.uid());
+
+CREATE POLICY "Hosts can manage their rooms"
+  ON public.rooms
+  FOR ALL
+  TO authenticated
+  USING (host_id = auth.uid());
+
+-- RLS policies for profiles (from File 8)
 CREATE POLICY "Public profiles are viewable by everyone"
-ON public.profiles FOR SELECT
-TO public
-USING (true);
+  ON public.profiles
+  FOR SELECT
+  TO public
+  USING (true);
 
 CREATE POLICY "Users can insert their own profile"
-ON public.profiles FOR INSERT
-TO public
-WITH CHECK (auth.uid() = id);
+  ON public.profiles
+  FOR INSERT
+  TO public
+  WITH CHECK (auth.uid() = id);
 
 CREATE POLICY "Users can update own profile"
-ON public.profiles FOR UPDATE
-TO public
-USING (auth.uid() = id)
-WITH CHECK (auth.uid() = id);
+  ON public.profiles
+  FOR UPDATE
+  TO public
+  USING (auth.uid() = id)
+  WITH CHECK (auth.uid() = id);
 
+-- RLS policies for user_stats (from File 8)
 CREATE POLICY "Users can create their own stats"
-ON public.user_stats FOR INSERT
-TO authenticated
-WITH CHECK (auth.uid() = user_id);
+  ON public.user_stats
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (auth.uid() = user_id);
 
 CREATE POLICY "Users can view their own stats"
-ON public.user_stats FOR SELECT
-TO authenticated
-USING (auth.uid() = user_id);
+  ON public.user_stats
+  FOR SELECT
+  TO authenticated
+  USING (auth.uid() = user_id);
 
 CREATE POLICY "System can update user stats"
-ON public.user_stats FOR ALL
-TO authenticated
-USING (auth.uid() = user_id)
-WITH CHECK (auth.uid() = user_id);
+  ON public.user_stats
+  FOR ALL
+  TO authenticated
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
 
+-- RLS policies for sessions (from File 8)
 CREATE POLICY "Users can create their own sessions"
-ON public.sessions FOR INSERT
-TO authenticated
-WITH CHECK (auth.uid() = user_id);
+  ON public.sessions
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (auth.uid() = user_id);
 
 CREATE POLICY "Users can manage their sessions"
-ON public.sessions FOR ALL
-TO authenticated
-USING (auth.uid() = user_id)
-WITH CHECK (auth.uid() = user_id);
+  ON public.sessions
+  FOR ALL
+  TO authenticated
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
 
+-- RLS policies for transcripts (from File 8)
 CREATE POLICY "Users can create their own transcripts"
-ON public.transcripts FOR INSERT
-TO authenticated
-WITH CHECK (auth.uid() = user_id);
+  ON public.transcripts
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (auth.uid() = user_id);
 
 CREATE POLICY "Users can view their own transcripts"
-ON public.transcripts FOR SELECT
-TO authenticated
-USING (auth.uid() = user_id);
+  ON public.transcripts
+  FOR SELECT
+  TO authenticated
+  USING (auth.uid() = user_id);
 
--- Create trigger functions
+-- Create trigger functions (from File 7 and File 8)
 CREATE OR REPLACE FUNCTION public.update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
   NEW.updated_at = now();
   RETURN NEW;
 END;
-$$ language 'plpgsql';
+$$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION public.handle_user_active()
 RETURNS TRIGGER AS $$
 BEGIN
-  -- Update the last_active_at timestamp
-  NEW.last_active_at = now();
+  UPDATE public.profiles
+  SET last_seen_at = now(),
+      updated_at = now()
+  WHERE id = auth.uid();
   RETURN NEW;
 END;
-$$ language 'plpgsql';
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Create triggers
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO profiles (id, username)
+  VALUES (NEW.id, NEW.raw_user_meta_data->>'username');
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create triggers (from File 7 and File 8)
 CREATE TRIGGER update_profiles_updated_at
   BEFORE UPDATE ON public.profiles
   FOR EACH ROW
@@ -161,3 +351,17 @@ CREATE TRIGGER on_session_active
   AFTER UPDATE OF last_active_at ON public.sessions
   FOR EACH ROW
   EXECUTE FUNCTION public.handle_user_active();
+
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 
+    FROM pg_trigger 
+    WHERE tgname = 'on_auth_user_created'
+  ) THEN
+    CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW
+    EXECUTE FUNCTION public.handle_new_user();
+  END IF;
+END $$;
