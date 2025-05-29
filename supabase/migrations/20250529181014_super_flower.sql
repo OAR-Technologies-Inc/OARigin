@@ -70,12 +70,6 @@ CREATE TRIGGER trigger_match_players
     EXECUTE FUNCTION match_players();
 
 -- Add RLS policies for waiting_pool
-CREATE POLICY "Users can insert themselves into waiting pool"
-    ON public.waiting_pool
-    FOR INSERT
-    TO authenticated
-    WITH CHECK (auth.uid() = user_id);
-
 CREATE POLICY "Users can update their own status"
     ON public.waiting_pool
     FOR UPDATE
