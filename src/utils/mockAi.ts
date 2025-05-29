@@ -1,5 +1,5 @@
 import { buildNarrationPrompt } from '../utils/promptBuilder';
-import { User, Room, GameGenre, GameState } from '../types';
+import { User, Room, GameGenre } from '../types';
 
 const fallbackResponses = [
   "The story takes an unexpected turn as ancient magic interferes with the narrative...",
@@ -13,7 +13,6 @@ const getFallbackResponse = () => {
   return fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)];
 };
 
-// Check for death in AI response
 const checkForDeath = (response: string): boolean => {
   const deathPhrases = [
     'you have died',
@@ -25,67 +24,13 @@ const checkForDeath = (response: string): boolean => {
     'breathe your last breath',
     'your tale comes to a tragic end'
   ];
-  
-  return deathPhrases.some(phrase => 
-    response.toLowerCase().includes(phrase.toLowerCase())
-  );
+  return deathPhrases.some(phrase => response.toLowerCase().includes(phrase));
 };
 
-// Remove death tags from response
 const cleanResponse = (response: string): string => {
   return response.replace(/\[PLAYER_DEATH\]/g, '').trim();
 };
 
-import { buildNarrationPrompt } from '../utils/promptBuilder';
-import { User, Room, GameGenre } from '../types';
-
-export const generateStoryBeginning = async (
-  genre: GameGenre,
-  players: User[],
-  room: Room
-) => {
-  try {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-    if (!supabaseUrl || !supabaseKey) {
-      console.warn('Missing Supabase configuration');
-      return getFallbackResponse();
-    }
-
-    const prompt = buildNarrationPrompt({
-      genre,
-      players,
-      room,
-    });
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-    const response = await fetch(`${supabaseUrl}/functions/v1/gpt-story`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${supabaseKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ prompt }),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return cleanResponse(data.text);
-  } catch (error: any) {
-    console.error('Story beginning error:', error);
-    return getFallbackResponse();
-  }
-};
-//Generate Story Beginning
 export const generateStoryBeginning = async (
   genre: GameGenre,
   players: User[],
@@ -133,7 +78,6 @@ export const generateStoryBeginning = async (
   }
 };
 
-// Generate a continuation using full game context
 export const generateStoryContinuation = async ({
   genre,
   players,
@@ -195,13 +139,9 @@ export const generateStoryContinuation = async ({
     const data = await response.json();
     const aiResponse = data.text;
 
-    // Check for death in response
-    const isDeath = checkForDeath(aiResponse);
-    const cleanedResponse = cleanResponse(aiResponse);
-
     return {
-      text: cleanedResponse,
-      playerDied: isDeath
+      text: cleanResponse(aiResponse),
+      playerDied: checkForDeath(aiResponse)
     };
   } catch (error: any) {
     if (error.name === 'AbortError') {
@@ -219,7 +159,6 @@ export const generateStoryContinuation = async ({
   }
 };
 
-// Optional: delay utility
 export const simulateAiProcessing = (
   callback: () => void,
   minDelay = 1000,
