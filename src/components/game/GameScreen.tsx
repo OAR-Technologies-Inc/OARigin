@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MessageSquare, Save, Users, ArrowLeft } from 'lucide-react';
-import { useGameStore } from '../../store';
+import { useGameStore } from '../store';
 import StoryConsole from './StoryConsole';
 import ChatSidebar from './ChatSidebar';
 import Button from '../ui/Button';
@@ -9,13 +9,24 @@ import Card from '../ui/Card';
 import { StorySegment, GameState } from '../../types';
 import { buildNarrationPrompt } from '../../utils/promptBuilder';
 import { v4 as uuidv4 } from 'uuid';
+import { supabase } from '../../supabase';
 
-// Simulated GPT API call (replace with your actual GPT integration)
+// Function to call GPT API via Supabase Edge Function
 const fetchAIResponse = async (prompt: string): Promise<string> => {
-  // Replace this with your actual GPT API call
-  // For now, simulating a response that might include [PLAYER_DEATH] or [GAME_ENDED]
-  const simulatedResponse = "The creature lunges at you, its claws sinking deep. You fall, your vision fading to black. [PLAYER_DEATH]";
-  return simulatedResponse;
+  try {
+    const { data, error } = await supabase.functions.invoke('generate-story', {
+      body: JSON.stringify({ prompt }),
+    });
+
+    if (error) {
+      throw new Error(`Failed to fetch AI response: ${error.message}`);
+    }
+
+    return data.response || 'The story begins to unfold... [An unexpected AI response occurred]';
+  } catch (error) {
+    console.error('Error fetching AI response:', error);
+    return 'The story begins to unfold... [An unexpected error occurred]';
+  }
 };
 
 const GameScreen: React.FC = () => {
@@ -177,7 +188,7 @@ const GameScreen: React.FC = () => {
 
     try {
       const deadPlayers = players.filter(p => p.status === 'dead').map(p => p.username);
-
+      
       const prompt = buildNarrationPrompt({
         genre: currentRoom.genreTag,
         players: players.map(p => p.username),
@@ -198,9 +209,9 @@ const GameScreen: React.FC = () => {
 
       const text = await fetchAIResponse(prompt);
       let cleanText = text;
+      let playerDied = false;
 
       // Check for [PLAYER_DEATH] token
-      let playerDied = false;
       if (cleanText.includes('[PLAYER_DEATH]')) {
         cleanText = cleanText.replace('[PLAYER_DEATH]', '');
         playerDied = true;
