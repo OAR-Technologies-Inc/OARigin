@@ -164,18 +164,18 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
                   disabled={isCurrentPlayerDead || gameState === GameState.ENDED}
                   fullWidth
                   className={`min-h-[80px] text-sm md:text-base ${
-                    isCurrentPlayerDead ? 'opacity-50 cursor-not-allowed' : ''
+                    (isCurrentPlayerDead || gameState === GameState.ENDED) ? 'opacity-50 cursor-not-allowed' : ''
                   }`}
                 />
                 <Button
-                  variant={isCurrentPlayerDead ? "danger" : "primary"}
+                  variant={(isCurrentPlayerDead || gameState === GameState.ENDED) ? "danger" : "primary"}
                   onClick={handleFreestyleSubmit}
                   disabled={!freestyleInput.trim() || isCurrentPlayerDead || gameState === GameState.ENDED}
                   icon={<Send size={16} />}
                   fullWidth
-                  className={`mt-2 ${isCurrentPlayerDead ? 'opacity-50' : ''}`}
+                  className={`mt-2 ${(isCurrentPlayerDead || gameState === GameState.ENDED) ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
-                  {isCurrentPlayerDead ? "You Have Died" : "Submit Move"}
+                  {(isCurrentPlayerDead || gameState === GameState.ENDED) ? "Cannot Submit" : "Submit Move"}
                 </Button>
               </>
             ) : (
@@ -184,12 +184,12 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
                   options.map((option, index) => (
                     <Button
                       key={index}
-                      variant={isCurrentPlayerDead ? "danger" : "secondary"}
+                      variant={(isCurrentPlayerDead || gameState === GameState.ENDED) ? "danger" : "secondary"}
                       onClick={() => handleOptionSelect(option)}
                       disabled={isCurrentPlayerDead || gameState === GameState.ENDED}
                       fullWidth
                       className={`text-sm md:text-base ${
-                        isCurrentPlayerDead ? 'opacity-50 cursor-not-allowed' : ''
+                        (isCurrentPlayerDead || gameState === GameState.ENDED) ? 'opacity-50 cursor-not-allowed' : ''
                       }`}
                     >
                       {option}
