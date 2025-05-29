@@ -364,7 +364,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       return shouldEnd ? { gameState: GameState.ENDED, currentPlayerIndex: 0 } : state;
     }),
 
-  updateProgress: (updates) =>
+  updateProgress; (updates) =>
     set((state) => ({
       progress: { ...state.progress, ...updates }
     })),
