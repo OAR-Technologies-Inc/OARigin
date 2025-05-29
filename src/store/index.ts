@@ -244,17 +244,19 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     if (sessionError) throw sessionError;
 
     const { currentUser } = get();
-    if (currentUser) {
-      set({
-        currentRoom: room,
-        isHost: room.host_id === userId,
-        players: [{ ...currentUser, status: 'alive' }],
-        previousPlayers: [{ ...currentUser, status: 'alive' }],
-        newPlayers: [],
-        currentPlayerIndex: 0
-      });
-    }
-  },
+if (currentUser) {
+  set({
+    currentRoom: {
+      ...room,
+      genreTag: room.genre_tag, // ✅ map correctly here
+    },
+    isHost: room.host_id === userId,
+    players: [{ ...currentUser, status: 'alive' }],
+    previousPlayers: [{ ...currentUser, status: 'alive' }],
+    newPlayers: [],
+    currentPlayerIndex: 0
+  });
+}
 
   leaveRoom: async () => {
     const { currentRoom, currentUser } = get();
