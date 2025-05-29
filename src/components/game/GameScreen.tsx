@@ -236,7 +236,7 @@ const GameScreen: React.FC = () => {
     storySegments.forEach((segment) => {
       transcriptText += segment.aiResponse + '\n\n';
       if (segment.content) {
-        transcriptText += > ${segment.content}\n\n;
+        transcriptText +=  '${segment.content}\n\n';
       }
     });
 
