@@ -426,4 +426,4 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       .eq('user_id', currentUser.id)
       .eq('status', 'waiting');
   }
-}));
+});
