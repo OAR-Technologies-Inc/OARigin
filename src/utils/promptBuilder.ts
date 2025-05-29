@@ -60,10 +60,11 @@ Continue the story from the narrator’s perspective.
 
   // Determine if the storyline is complete based on mode-specific progress
   let isStoryComplete = false;
-  switch (genre.toLowerCase()) {
-    case 'survival':
-      isStoryComplete = (progress.daysSurvived >= 7 || progress.milesTraveled >= 10);
-      break;
+if (!genre || typeof genre !== 'string') {
+  console.error('Genre is undefined or not a string');
+  return 'Default prompt'; // or handle appropriately
+}
+switch (genre.toLowerCase()) {
     case 'fantasy':
       isStoryComplete = (progress.artifactsFound >= 3);
       break;
