@@ -4,7 +4,7 @@ import Terminal from '../ui/Terminal';
 import Button from '../ui/Button';
 import TextArea from '../ui/TextArea';
 import { StorySegment, GameMode, GameState } from '../../types';
-import { useGameStore } from '../../store';
+import { useGameStore } from '../../store'; // Updated import path
 
 interface StoryConsoleProps {
   storySegments: StorySegment[];
