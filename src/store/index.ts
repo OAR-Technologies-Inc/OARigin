@@ -307,7 +307,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     });
   },
 
-  setPlayerDeath: (playerName) =>
+  setPlayerDeath; (playerName) =>
     set((state) => {
       const player = state.players.find(p => p.username === playerName);
       if (!player) return state;
