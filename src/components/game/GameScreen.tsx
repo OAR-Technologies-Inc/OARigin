@@ -55,7 +55,9 @@ const GameScreen: React.FC = () => {
   const hasStartedRef = useRef(false);
 
   useEffect(() => {
+    console.log('GameScreen state:', { currentRoom, gameState, players, currentPlayerIndex });
     if (!currentRoom || gameState === GameState.ENDED) {
+      console.log('Navigating to / because currentRoom is null or gameState is ENDED');
       navigate('/');
     }
   }, [currentRoom, gameState, navigate]);
@@ -182,7 +184,13 @@ const GameScreen: React.FC = () => {
   }, [newPlayers, loadingStory, currentRoom, tempSegment, storySegments, players]);
 
   const handleMakeChoice = async (choice: string) => {
-    if (loadingStory || !currentRoom || tempSegment || gameState === GameState.ENDED) return;
+    const isCurrentPlayerDead = players[currentPlayerIndex]?.status === 'dead';
+    console.log('handleMakeChoice called:', { choice, isCurrentPlayerDead, gameState, currentPlayerIndex, players });
+
+    if (loadingStory || !currentRoom || tempSegment || gameState === GameState.ENDED || isCurrentPlayerDead) {
+      console.log('handleMakeChoice aborted:', { loadingStory, currentRoom, tempSegment, gameState, isCurrentPlayerDead });
+      return;
+    }
 
     setLoadingStory(true);
 
