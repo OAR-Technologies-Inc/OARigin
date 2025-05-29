@@ -281,7 +281,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   }
 },
 
-  leaveRoom: async () => {
+  leaveRoom; async () => {
     const { currentRoom, currentUser } = get();
     if (!currentRoom || !currentUser) return;
 
