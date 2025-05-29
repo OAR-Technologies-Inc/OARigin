@@ -239,14 +239,13 @@ useEffect(() => {
   };
 
   const handleExportTranscript = () => {
-    let transcriptText = '# OARigin Adventure Transcript\n\n';
-
-    storySegments.forEach((segment) => {
-      transcriptText += segment.aiResponse + '\n\n';
-      if (segment.content) {
-        transcriptText += > ${segment.content}\n\n;
-      }
-    });
+  let transcriptText = '# OARigin Adventure Transcript\n\n';
+  storySegments.forEach((segment) => {
+    transcriptText += segment.aiResponse + '\n\n';
+    if (segment.content) {
+      transcriptText += `${segment.content}\n\n`;
+    }
+  });
 
     const blob = new Blob([transcriptText], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
