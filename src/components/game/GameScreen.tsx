@@ -44,50 +44,58 @@ const GameScreen: React.FC = () => {
     }
   }, [currentRoom, navigate]);
 
-  useEffect(() => {
-    const initializeStory = async () => {
-      if (!hasStartedRef.current && currentRoom && storySegments.length === 0 && !loadingStory) {
-        hasStartedRef.current = true;
-        setLoadingStory(true);
-
-        try {
-          const initialStory = await generateStoryBeginning(
-            currentRoom.genreTag,
-            players.map(p => p.username),
-            currentRoom.gameMode
-          );
-
-          const newSegment: StorySegment = {
-            id: uuidv4(),
-            roomId: currentRoom.id,
-            content: '',
-            aiResponse: initialStory,
-            decisionType: 'freestyle',
-            options: [],
-            createdAt: new Date().toISOString()
-          };
-
-          setTempSegment(newSegment);
-        } catch (error) {
-          console.error('Failed to generate story beginning:', error);
-          const fallbackSegment: StorySegment = {
-            id: uuidv4(),
-            roomId: currentRoom.id,
-            content: '',
-            aiResponse: 'The story begins to unfold... [An unexpected error occurred]',
-            decisionType: 'freestyle',
-            options: [],
-            createdAt: new Date().toISOString()
-          };
-          setTempSegment(fallbackSegment);
-        } finally {
-          setLoadingStory(false);
-        }
+useEffect(() => {
+  const initializeStory = async () => {
+    if (
+      !hasStartedRef.current &&
+      currentRoom &&
+      currentRoom.genreTag && // Add this check
+      storySegments.length === 0 &&
+      !loadingStory
+    ) {
+      hasStartedRef.current = true;
+      setLoadingStory(true);
+      try {
+        console.log('Calling generateStoryBeginning with:', {
+          genre: currentRoom.genreTag,
+          players: players.map(p => p.username),
+          gameMode: currentRoom.gameMode
+        });
+        const initialStory = await generateStoryBeginning(
+          currentRoom.genreTag,
+          players.map(p => p.username),
+          currentRoom.gameMode
+        );
+        const newSegment: StorySegment = {
+          id: uuidv4(),
+          roomId: currentRoom.id,
+          content: '',
+          aiResponse: initialStory,
+          decisionType: 'freestyle',
+          options: [],
+          createdAt: new Date().toISOString()
+        };
+        setTempSegment(newSegment);
+      } catch (error) {
+        console.error('Failed to generate story beginning:', error);
+        const fallbackSegment: StorySegment = {
+          id: uuidv4(),
+          roomId: currentRoom.id,
+          content: '',
+          aiResponse: 'The story begins to unfold... [An unexpected error occurred]',
+          decisionType: 'freestyle',
+          options: [],
+          createdAt: new Date().toISOString()
+        };
+        setTempSegment(fallbackSegment);
+      } finally {
+        setLoadingStory(false);
       }
-    };
+    }
+  };
 
-    initializeStory();
-  }, [currentRoom, storySegments, loadingStory, players]);
+  initializeStory();
+}, [currentRoom, storySegments, loadingStory, players]);
 
   useEffect(() => {
     const introduceNewPlayers = async () => {
