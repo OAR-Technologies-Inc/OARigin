@@ -329,7 +329,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       };
     }),
 
-  checkGameEnd: () =>
+  checkGameEnd; () =>
     set((state) => {
       const alivePlayers = state.players.filter(p => p.status === 'alive');
       if (alivePlayers.length === 0) {
