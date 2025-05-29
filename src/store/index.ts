@@ -167,12 +167,12 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       return state;
     }),
 
-  createRoom: async (genre: GameGenre, isPublic: boolean) => {
+    createRoom: async (genre: GameGenre, isPublic: boolean) => {
     const { currentUser } = get();
     if (!currentUser) throw new Error('No user logged in');
 
     const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-    
+
     const { data: room, error } = await supabase
       .from('rooms')
       .insert({
@@ -187,7 +187,6 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
     if (error) throw error;
 
-    // Create initial session
     const { error: sessionError } = await supabase
       .from('sessions')
       .insert({
@@ -198,7 +197,10 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     if (sessionError) throw sessionError;
 
     set({
-      currentRoom: room,
+      currentRoom: {
+        ...room,
+        genreTag: room.genre_tag
+      },
       isHost: true,
       players: [{ ...currentUser, status: 'alive' }],
       previousPlayers: [{ ...currentUser, status: 'alive' }],
@@ -213,50 +215,6 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   },
 
   joinRoom: async (userId: string, roomCode: string) => {
-    const { data: room, error: roomError } = await supabase
-      .from('rooms')
-      .select()
-      .eq('code', roomCode)
-      .single();
-
-    if (roomError) throw roomError;
-
-    // Check if user is already in a room
-    const { data: existingSession } = await supabase
-      .from('sessions')
-      .select()
-      .eq('user_id', userId)
-      .eq('is_active', true)
-      .single();
-
-    if (existingSession) {
-      throw new Error('Already in an active session');
-    }
-
-    // Join the room
-    joinRoom: async (userId: string, roomCode: string) => {
-  const { data: room, error: roomError } = await supabase
-    .from('rooms')
-    .select()
-    .eq('code', roomCode)
-    .single();
-
-  if (roomError) throw roomError;
-
-  // Check if user is already in a room
-  const { data: existingSession } = await supabase
-    .from('sessions')
-    .select()
-    .eq('user_id', userId)
-    .eq('is_active', true)
-    .single();
-
-  if (existingSession) {
-    throw new Error('Already in an active session');
-  }
-
-  // Join the room
-    joinRoom: async (userId: string, roomCode: string) => {
     const { data: room, error: roomError } = await supabase
       .from('rooms')
       .select()
@@ -290,7 +248,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       set({
         currentRoom: {
           ...room,
-          genreTag: room.genre_tag,
+          genreTag: room.genre_tag
         },
         isHost: room.host_id === userId,
         players: [{ ...currentUser, status: 'alive' }],
@@ -337,7 +295,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
       const updatedDeadPlayers = [...state.deadPlayers, playerName];
       const alivePlayers = updatedPlayers.filter(p => p.status === 'alive');
-      
+
       const newGameState = alivePlayers.length === 0 ? GameState.ENDED : state.gameState;
 
       return {
