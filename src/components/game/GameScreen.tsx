@@ -9,7 +9,7 @@ import Card from '../ui/Card';
 import { StorySegment, GameState } from '../../types';
 import { buildNarrationPrompt } from '../../utils/promptBuilder';
 import { v4 as uuidv4 } from 'uuid';
-import { supabase } from '../../supabase';
+import { supabase } from '../../lib/supabase';
 
 // Function to call GPT API via Supabase Edge Function
 const fetchAIResponse = async (prompt: string): Promise<string> => {
