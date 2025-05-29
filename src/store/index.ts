@@ -369,7 +369,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       progress: { ...state.progress, ...updates }
     })),
 
-  subscribeToRoom: (roomId: string) => {
+  subscribeToRoom; (roomId: string) => {
     const subscription = supabase
       .channel(`room:${roomId}`)
       .on('presence', { event: 'sync' }, () => {
