@@ -425,5 +425,6 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       .update({ status: 'left' })
       .eq('user_id', currentUser.id)
       .eq('status', 'waiting');
+// ... last method (leaveMatchmaking, etc.) ...
   }
-});
+}));
