@@ -256,36 +256,55 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   }
 
   // Join the room
-  const { error: sessionError } = await supabase
-    .from('sessions')
-    .insert({
-      user_id: userId,
-      room_id: room.id
-    });
+    joinRoom: async (userId: string, roomCode: string) => {
+    const { data: room, error: roomError } = await supabase
+      .from('rooms')
+      .select()
+      .eq('code', roomCode)
+      .single();
 
-  if (sessionError) throw sessionError;
+    if (roomError) throw roomError;
 
-  const { currentUser } = get();
-  if (currentUser) {
-    set({
-      currentRoom: {
-        ...room,
-        genreTag: room.genre_tag, // ✅ THIS FIX
-      },
-      isHost: room.host_id === userId,
-      players: [{ ...currentUser, status: 'alive' }],
-      previousPlayers: [{ ...currentUser, status: 'alive' }],
-      newPlayers: [],
-      currentPlayerIndex: 0
-    });
-  }
-},
+    const { data: existingSession } = await supabase
+      .from('sessions')
+      .select()
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .single();
 
-  leaveRoom; async () => {
+    if (existingSession) {
+      throw new Error('Already in an active session');
+    }
+
+    const { error: sessionError } = await supabase
+      .from('sessions')
+      .insert({
+        user_id: userId,
+        room_id: room.id
+      });
+
+    if (sessionError) throw sessionError;
+
+    const { currentUser } = get();
+    if (currentUser) {
+      set({
+        currentRoom: {
+          ...room,
+          genreTag: room.genre_tag,
+        },
+        isHost: room.host_id === userId,
+        players: [{ ...currentUser, status: 'alive' }],
+        previousPlayers: [{ ...currentUser, status: 'alive' }],
+        newPlayers: [],
+        currentPlayerIndex: 0
+      });
+    }
+  },
+
+  leaveRoom: async () => {
     const { currentRoom, currentUser } = get();
     if (!currentRoom || !currentUser) return;
 
-    // Update session
     await supabase
       .from('sessions')
       .update({ is_active: false })
@@ -307,7 +326,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     });
   },
 
-  setPlayerDeath; (playerName) =>
+  setPlayerDeath: (playerName) =>
     set((state) => {
       const player = state.players.find(p => p.username === playerName);
       if (!player) return state;
@@ -329,7 +348,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       };
     }),
 
-  checkGameEnd; () =>
+  checkGameEnd: () =>
     set((state) => {
       const alivePlayers = state.players.filter(p => p.status === 'alive');
       if (alivePlayers.length === 0) {
@@ -364,23 +383,17 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       return shouldEnd ? { gameState: GameState.ENDED, currentPlayerIndex: 0 } : state;
     }),
 
-  updateProgress; (updates) =>
+  updateProgress: (updates) =>
     set((state) => ({
       progress: { ...state.progress, ...updates }
     })),
 
-  subscribeToRoom; (roomId: string) => {
+  subscribeToRoom: (roomId: string) => {
     const subscription = supabase
       .channel(`room:${roomId}`)
-      .on('presence', { event: 'sync' }, () => {
-        // Handle presence sync
-      })
-      .on('presence', { event: 'join' }, ({ newPresences }) => {
-        // Handle player join
-      })
-      .on('presence', { event: 'leave' }, ({ leftPresences }) => {
-        // Handle player leave
-      })
+      .on('presence', { event: 'sync' }, () => {})
+      .on('presence', { event: 'join' }, () => {})
+      .on('presence', { event: 'leave' }, () => {})
       .subscribe();
 
     return () => {
@@ -388,11 +401,10 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     };
   },
 
-  joinMatchmaking; async (genre: GameGenre) => {
+  joinMatchmaking: async (genre: GameGenre) => {
     const { currentUser } = get();
     if (!currentUser) throw new Error('No user logged in');
 
-    // Check if already in matchmaking
     const { data: existing } = await supabase
       .from('waiting_pool')
       .select()
@@ -404,7 +416,6 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       throw new Error('Already in matchmaking queue');
     }
 
-    // Join matchmaking pool
     const { error } = await supabase
       .from('waiting_pool')
       .insert({
@@ -416,7 +427,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     if (error) throw error;
   },
 
-  leaveMatchmaking; async () => {
+  leaveMatchmaking: async () => {
     const { currentUser } = get();
     if (!currentUser) return;
 
@@ -425,6 +436,5 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       .update({ status: 'left' })
       .eq('user_id', currentUser.id)
       .eq('status', 'waiting');
-// ... last method (leaveMatchmaking, etc.) ...
   }
 }));
