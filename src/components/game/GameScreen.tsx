@@ -44,58 +44,50 @@ const GameScreen: React.FC = () => {
     }
   }, [currentRoom, navigate]);
 
-useEffect(() => {
-  const initializeStory = async () => {
-    if (
-      !hasStartedRef.current &&
-      currentRoom &&
-      currentRoom.genreTag && // Add this check
-      storySegments.length === 0 &&
-      !loadingStory
-    ) {
-      hasStartedRef.current = true;
-      setLoadingStory(true);
-      try {
-        console.log('Calling generateStoryBeginning with:', {
-          genre: currentRoom.genreTag,
-          players: players.map(p => p.username),
-          gameMode: currentRoom.gameMode
-        });
-        const initialStory = await generateStoryBeginning(
-          currentRoom.genreTag,
-          players.map(p => p.username),
-          currentRoom.gameMode
-        );
-        const newSegment: StorySegment = {
-          id: uuidv4(),
-          roomId: currentRoom.id,
-          content: '',
-          aiResponse: initialStory,
-          decisionType: 'freestyle',
-          options: [],
-          createdAt: new Date().toISOString()
-        };
-        setTempSegment(newSegment);
-      } catch (error) {
-        console.error('Failed to generate story beginning:', error);
-        const fallbackSegment: StorySegment = {
-          id: uuidv4(),
-          roomId: currentRoom.id,
-          content: '',
-          aiResponse: 'The story begins to unfold... [An unexpected error occurred]',
-          decisionType: 'freestyle',
-          options: [],
-          createdAt: new Date().toISOString()
-        };
-        setTempSegment(fallbackSegment);
-      } finally {
-        setLoadingStory(false);
-      }
-    }
-  };
+  useEffect(() => {
+    const initializeStory = async () => {
+      if (!hasStartedRef.current && currentRoom && storySegments.length === 0 && !loadingStory) {
+        hasStartedRef.current = true;
+        setLoadingStory(true);
 
-  initializeStory();
-}, [currentRoom, storySegments, loadingStory, players]);
+        try {
+          const initialStory = await generateStoryBeginning(
+            currentRoom.genreTag,
+            players.map(p => p.username),
+            currentRoom.gameMode
+          );
+
+          const newSegment: StorySegment = {
+            id: uuidv4(),
+            roomId: currentRoom.id,
+            content: '',
+            aiResponse: initialStory,
+            decisionType: 'freestyle',
+            options: [],
+            createdAt: new Date().toISOString()
+          };
+
+          setTempSegment(newSegment);
+        } catch (error) {
+          console.error('Failed to generate story beginning:', error);
+          const fallbackSegment: StorySegment = {
+            id: uuidv4(),
+            roomId: currentRoom.id,
+            content: '',
+            aiResponse: 'The story begins to unfold... [An unexpected error occurred]',
+            decisionType: 'freestyle',
+            options: [],
+            createdAt: new Date().toISOString()
+          };
+          setTempSegment(fallbackSegment);
+        } finally {
+          setLoadingStory(false);
+        }
+      }
+    };
+
+    initializeStory();
+  }, [currentRoom, storySegments, loadingStory, players]);
 
   useEffect(() => {
     const introduceNewPlayers = async () => {
@@ -239,24 +231,25 @@ useEffect(() => {
   };
 
   const handleExportTranscript = () => {
-  let transcriptText = '# OARigin Adventure Transcript\n\n';
-  storySegments.forEach((segment) => {
-    transcriptText += segment.aiResponse + '\n\n';
-    if (segment.content) {
-      transcriptText += `${segment.content}\n\n`;
-    }
-  });
+    let transcriptText = '# OARigin Adventure Transcript\n\n';
 
-  const blob = new Blob([transcriptText], { type: 'text/plain' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `oarigin-adventure-${currentRoom?.code || 'transcript'}.txt`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-};
+    storySegments.forEach((segment) => {
+      transcriptText += segment.aiResponse + '\n\n';
+      if (segment.content) {
+        transcriptText += > ${segment.content}\n\n;
+      }
+    });
+
+    const blob = new Blob([transcriptText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = oarigin-adventure-${currentRoom?.code || 'transcript'}.txt;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   const currentPlayer = players[currentPlayerIndex]?.username || 'Player';
   const isCurrentPlayerDead = players[currentPlayerIndex]?.status === 'dead';
