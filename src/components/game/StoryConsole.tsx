@@ -34,6 +34,18 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
   const [animationDone, setAnimationDone] = useState(false);
   const [options, setOptions] = useState<string[]>([]);
 
+  // Debug state updates
+  useEffect(() => {
+    console.log('StoryConsole state:', {
+      isCurrentPlayerDead,
+      gameState,
+      currentPlayer,
+      storySegments,
+      tempSegment,
+      isProcessing,
+    });
+  }, [isCurrentPlayerDead, gameState, currentPlayer, storySegments, tempSegment, isProcessing]);
+
   // Clear input when player dies or game ends
   useEffect(() => {
     if (isCurrentPlayerDead || gameState === GameState.ENDED) {
