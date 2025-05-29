@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MessageSquare, Save, Users, ArrowLeft } from 'lucide-react';
-import { useGameStore } from '../../store'; // Updated import path
+import { useGameStore } from '../store';
 import StoryConsole from './StoryConsole';
 import ChatSidebar from './ChatSidebar';
 import Button from '../ui/Button';
@@ -9,25 +9,7 @@ import Card from '../ui/Card';
 import { StorySegment, GameState } from '../../types';
 import { buildNarrationPrompt } from '../../utils/promptBuilder';
 import { v4 as uuidv4 } from 'uuid';
-import { supabase } from '../../lib/supabase';
-
-// Function to call GPT API via Supabase Edge Function
-const fetchAIResponse = async (prompt: string): Promise<string> => {
-  try {
-    const { data, error } = await supabase.functions.invoke('generate-story', {
-      body: JSON.stringify({ prompt }),
-    });
-
-    if (error) {
-      throw new Error(`Failed to fetch AI response: ${error.message}`);
-    }
-
-    return data.response || 'The story begins to unfold... [An unexpected AI response occurred]';
-  } catch (error) {
-    console.error('Error fetching AI response:', error);
-    return 'The story begins to unfold... [An unexpected error occurred]';
-  }
-};
+import { generateStoryBeginning, generateStoryContinuation } from '../../utils/mockAi';
 
 const GameScreen: React.FC = () => {
   const navigate = useNavigate();
@@ -69,25 +51,11 @@ const GameScreen: React.FC = () => {
         setLoadingStory(true);
 
         try {
-          const prompt = buildNarrationPrompt({
-            genre: currentRoom.genreTag,
-            players: players.map(p => p.username),
-            storyLog: [],
-            currentPlayer: '',
-            playerInput: '',
-            deadPlayers: [],
-            newPlayers: players.map(p => p.username),
-            gameMode: currentRoom.gameMode,
-            tone: 'tense',
-            playerRoles: {},
-            storyPhase: 'opening',
-            sessionGoal: 'medium',
-            inventory: [],
-            turnCount: 0,
-            progress,
-          });
-
-          const initialStory = await fetchAIResponse(prompt);
+          const initialStory = await generateStoryBeginning(
+            currentRoom.genreTag,
+            players.map(p => p.username),
+            currentRoom.gameMode
+          );
 
           const newSegment: StorySegment = {
             id: uuidv4(),
@@ -148,7 +116,16 @@ const GameScreen: React.FC = () => {
           progress,
         });
 
-        const text = await fetchAIResponse(prompt);
+        const { text } = await generateStoryContinuation({
+          genre: currentRoom.genreTag,
+          players: players.map(p => p.username),
+          storyLog: storySegments.map(s => s.aiResponse || s.content).filter(s => s),
+          currentPlayer: '',
+          playerInput: '',
+          deadPlayers,
+          newPlayers: newPlayers.map(p => p.username),
+          gameMode: currentRoom.gameMode
+        });
 
         const newSegment: StorySegment = {
           id: uuidv4(),
@@ -197,7 +174,7 @@ const GameScreen: React.FC = () => {
     try {
       const deadPlayers = players.filter(p => p.status === 'dead').map(p => p.username);
       
-      const prompt = buildNarrationPrompt({
+      const { text, playerDied } = await generateStoryContinuation({
         genre: currentRoom.genreTag,
         players: players.map(p => p.username),
         storyLog: storySegments.map(s => s.aiResponse || s.content).filter(s => s),
@@ -206,33 +183,18 @@ const GameScreen: React.FC = () => {
         deadPlayers,
         newPlayers: [],
         gameMode: currentRoom.gameMode,
-        tone: 'tense',
-        playerRoles: {},
-        storyPhase: storySegments.length < 3 ? 'opening' : storySegments.length < 6 ? 'rising' : storySegments.length < 9 ? 'climax' : 'resolution',
-        sessionGoal: 'medium',
-        inventory: [],
-        turnCount: storySegments.length,
-        progress,
       });
-
-      const text = await fetchAIResponse(prompt);
       let cleanText = text;
-      let playerDied = false;
 
-      // Check for [PLAYER_DEATH] token
-      if (cleanText.includes('[PLAYER_DEATH]')) {
-        cleanText = cleanText.replace('[PLAYER_DEATH]', '');
-        playerDied = true;
+      if (playerDied) {
         setPlayerDeath(players[currentPlayerIndex].username);
       }
 
-      // Check for [GAME_ENDED] token
       if (cleanText.includes('[GAME_ENDED]')) {
         cleanText = cleanText.replace('[GAME_ENDED]', '');
         setGameState(GameState.ENDED);
       }
 
-      // Parse AI response for progress updates (e.g., clues found, distance traveled)
       const updatedProgress = parseProgressUpdates(cleanText, currentRoom.genreTag);
       updateProgress(updatedProgress);
 
