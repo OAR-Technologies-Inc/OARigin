@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { GameGenre, Room, User, StorySegment, Vote, RoomStatus, GameMode, GameState, GameProgress } from '../types';
 import { v4 as uuidv4 } from 'uuid';
+import { supabase } from '../lib/supabase';
 
 interface GameStoreState {
   // User state
@@ -38,10 +39,15 @@ interface GameStoreState {
   setCurrentPlayerIndex: (index: number) => void;
   nextPlayerTurn: () => void;
   generateTempUser: (username: string) => void;
-  createTempRoom: (genre: GameGenre) => string;
+  createRoom: (genre: GameGenre, isPublic: boolean) => Promise<string>;
+  joinRoom: (userId: string, roomCode: string) => Promise<void>;
+  leaveRoom: () => Promise<void>;
   setPlayerDeath: (playerName: string) => void;
   checkGameEnd: () => void;
   updateProgress: (updates: Partial<GameProgress>) => void;
+  subscribeToRoom: (roomId: string) => () => void;
+  joinMatchmaking: (genre: GameGenre) => Promise<void>;
+  leaveMatchmaking: () => Promise<void>;
 }
 
 export const useGameStore = create<GameStoreState>((set, get) => ({
@@ -144,6 +150,138 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       return { currentPlayerIndex: nextIndex };
     }),
 
+  generateTempUser: (username) =>
+    set((state) => {
+      if (!state.currentUser && state.gameState !== GameState.PLAYING) {
+        return {
+          currentUser: {
+            id: uuidv4(),
+            username,
+            avatar: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${username}`,
+            oarWalletLinked: false,
+            status: 'alive'
+          },
+          isAuthenticated: true
+        };
+      }
+      return state;
+    }),
+
+  createRoom: async (genre: GameGenre, isPublic: boolean) => {
+    const { currentUser } = get();
+    if (!currentUser) throw new Error('No user logged in');
+
+    const roomCode = Math.floor(1000 + Math.random() * 9000).toString();
+    
+    const { data: room, error } = await supabase
+      .from('rooms')
+      .insert({
+        code: roomCode,
+        genre_tag: genre,
+        host_id: currentUser.id,
+        is_public: isPublic,
+        status: RoomStatus.OPEN
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // Create initial session
+    const { error: sessionError } = await supabase
+      .from('sessions')
+      .insert({
+        user_id: currentUser.id,
+        room_id: room.id
+      });
+
+    if (sessionError) throw sessionError;
+
+    set({
+      currentRoom: room,
+      isHost: true,
+      players: [{ ...currentUser, status: 'alive' }],
+      previousPlayers: [{ ...currentUser, status: 'alive' }],
+      newPlayers: [],
+      currentPlayerIndex: 0,
+      gameState: GameState.PLAYING,
+      deadPlayers: [],
+      progress: {}
+    });
+
+    return roomCode;
+  },
+
+  joinRoom: async (userId: string, roomCode: string) => {
+    const { data: room, error: roomError } = await supabase
+      .from('rooms')
+      .select()
+      .eq('code', roomCode)
+      .single();
+
+    if (roomError) throw roomError;
+
+    // Check if user is already in a room
+    const { data: existingSession } = await supabase
+      .from('sessions')
+      .select()
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .single();
+
+    if (existingSession) {
+      throw new Error('Already in an active session');
+    }
+
+    // Join the room
+    const { error: sessionError } = await supabase
+      .from('sessions')
+      .insert({
+        user_id: userId,
+        room_id: room.id
+      });
+
+    if (sessionError) throw sessionError;
+
+    const { currentUser } = get();
+    if (currentUser) {
+      set({
+        currentRoom: room,
+        isHost: room.host_id === userId,
+        players: [{ ...currentUser, status: 'alive' }],
+        previousPlayers: [{ ...currentUser, status: 'alive' }],
+        newPlayers: [],
+        currentPlayerIndex: 0
+      });
+    }
+  },
+
+  leaveRoom: async () => {
+    const { currentRoom, currentUser } = get();
+    if (!currentRoom || !currentUser) return;
+
+    // Update session
+    await supabase
+      .from('sessions')
+      .update({ is_active: false })
+      .eq('user_id', currentUser.id)
+      .eq('room_id', currentRoom.id);
+
+    set({
+      currentRoom: null,
+      isHost: false,
+      players: [],
+      previousPlayers: [],
+      newPlayers: [],
+      storySegments: [],
+      currentVotes: [],
+      gameState: GameState.PLAYING,
+      currentPlayerIndex: 0,
+      deadPlayers: [],
+      progress: {}
+    });
+  },
+
   setPlayerDeath: (playerName) =>
     set((state) => {
       const player = state.players.find(p => p.username === playerName);
@@ -156,7 +294,6 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       const updatedDeadPlayers = [...state.deadPlayers, playerName];
       const alivePlayers = updatedPlayers.filter(p => p.status === 'alive');
       
-      // Check if all players are dead and update game state
       const newGameState = alivePlayers.length === 0 ? GameState.ENDED : state.gameState;
 
       return {
@@ -207,53 +344,61 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       progress: { ...state.progress, ...updates }
     })),
 
-  generateTempUser: (username) =>
-    set((state) => {
-      // Only generate a new user if there isn't one already and the game hasn't started
-      if (!state.currentUser && state.gameState !== GameState.PLAYING) {
-        return {
-          currentUser: {
-            id: uuidv4(),
-            username,
-            avatar: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${username}`,
-            oarWalletLinked: false,
-            status: 'alive'
-          },
-          isAuthenticated: true
-        };
-      }
-      return state;
-    }),
+  subscribeToRoom: (roomId: string) => {
+    const subscription = supabase
+      .channel(`room:${roomId}`)
+      .on('presence', { event: 'sync' }, () => {
+        // Handle presence sync
+      })
+      .on('presence', { event: 'join' }, ({ newPresences }) => {
+        // Handle player join
+      })
+      .on('presence', { event: 'leave' }, ({ leftPresences }) => {
+        // Handle player leave
+      })
+      .subscribe();
 
-  createTempRoom: (genre) => {
-    const roomCode = Math.floor(1000 + Math.random() * 9000).toString();
-    set((state) => {
-      if (!state.currentUser) return {};
+    return () => {
+      subscription.unsubscribe();
+    };
+  },
 
-      const newRoom: Room = {
-        id: uuidv4(),
-        code: roomCode,
-        status: RoomStatus.OPEN,
-        currentNarrativeState: '',
-        genreTag: genre,
-        createdAt: new Date().toISOString(),
-        hostId: state.currentUser.id,
-        gameMode: GameMode.FREE_TEXT
-      };
+  joinMatchmaking: async (genre: GameGenre) => {
+    const { currentUser } = get();
+    if (!currentUser) throw new Error('No user logged in');
 
-      return {
-        currentRoom: newRoom,
-        isHost: true,
-        players: state.currentUser ? [{ ...state.currentUser, status: 'alive' }] : [],
-        previousPlayers: state.currentUser ? [{ ...state.currentUser, status: 'alive' }] : [],
-        newPlayers: [],
-        currentPlayerIndex: 0,
-        gameState: GameState.PLAYING,
-        deadPlayers: [],
-        progress: {}
-      };
-    });
+    // Check if already in matchmaking
+    const { data: existing } = await supabase
+      .from('waiting_pool')
+      .select()
+      .eq('user_id', currentUser.id)
+      .eq('status', 'waiting')
+      .single();
 
-    return roomCode;
+    if (existing) {
+      throw new Error('Already in matchmaking queue');
+    }
+
+    // Join matchmaking pool
+    const { error } = await supabase
+      .from('waiting_pool')
+      .insert({
+        user_id: currentUser.id,
+        genre,
+        status: 'waiting'
+      });
+
+    if (error) throw error;
+  },
+
+  leaveMatchmaking: async () => {
+    const { currentUser } = get();
+    if (!currentUser) return;
+
+    await supabase
+      .from('waiting_pool')
+      .update({ status: 'left' })
+      .eq('user_id', currentUser.id)
+      .eq('status', 'waiting');
   }
 }));
