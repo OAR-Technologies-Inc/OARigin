@@ -373,6 +373,8 @@ CREATE TRIGGER update_user_stats_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION public.update_updated_at_column();
 
+DROP TRIGGER IF EXISTS on_session_active ON public.sessions;
+
 CREATE TRIGGER on_session_active
   AFTER UPDATE OF last_active_at ON public.sessions
   FOR EACH ROW
