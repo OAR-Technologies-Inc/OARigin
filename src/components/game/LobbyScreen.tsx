@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Clock, UserPlus, Play, Users, Share2, Copy, Phone } from 'lucide-react';
-import { useGameStore } from '../../store';
+import { useGameStore } from '../../store'; // Updated import path
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 import { GameGenre, GameMode } from '../../types';
@@ -80,9 +80,28 @@ const LobbyScreen: React.FC = () => {
     }
   };
 
+  // If currentRoom is null, navigate to home
   if (!currentRoom) {
     navigate('/');
     return null;
+  }
+
+  // If players array is empty or not initialized, show a loading state
+  if (!players || players.length === 0) {
+    return (
+      <div className="max-w-4xl mx-auto p-4">
+        <Card className="p-6" glowColor="amber">
+          <div className="text-center">
+            <h1 className="text-2xl font-mono font-bold text-amber-500 mb-1">
+              Game Lobby
+            </h1>
+            <p className="text-gray-400">
+              Loading players...
+            </p>
+          </div>
+        </Card>
+      </div>
+    );
   }
 
   return (
@@ -107,11 +126,11 @@ const LobbyScreen: React.FC = () => {
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-400">Room Code:</span>
-                  <span className="text-amber-500 font-mono font-bold">{currentRoom.code}</span>
+                  <span className="text-amber-500 font-mono font-bold">{currentRoom.code || 'N/A'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-400">Genre:</span>
-                  <span className="text-white">{currentRoom.genreTag}</span>
+                  <span className="text-white">{currentRoom.genreTag || 'Unknown'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-400">Host:</span>
@@ -133,7 +152,7 @@ const LobbyScreen: React.FC = () => {
                   Share this code with friends to join your game:
                 </p>
                 <div className="font-mono text-xl text-amber-500 font-bold text-center p-2 bg-gray-900 rounded border border-gray-700">
-                  {currentRoom.code}
+                  {currentRoom.code || 'N/A'}
                 </div>
               </div>
 
@@ -167,12 +186,12 @@ const LobbyScreen: React.FC = () => {
                   className="flex items-center gap-3 p-2 rounded mb-2 bg-gray-900"
                 >
                   <img 
-                    src={player.avatar} 
-                    alt={player.username} 
+                    src={player.avatar || ''} 
+                    alt={player.username || 'Player'} 
                     className="w-8 h-8 rounded-full border border-green-500/50" 
                   />
                   <span className="font-mono">
-                    {player.username}
+                    {player.username || 'Unknown'}
                     {player.id === currentRoom.hostId && (
                       <span className="text-amber-500 ml-2">(Host)</span>
                     )}
@@ -198,7 +217,7 @@ const LobbyScreen: React.FC = () => {
                       <span className="text-sm text-gray-400">Game Genre:</span>
                       <select 
                         className="bg-gray-900 text-white border border-gray-700 rounded p-1 text-sm"
-                        defaultValue={currentRoom.genreTag}
+                        defaultValue={currentRoom.genreTag || GameGenre.HORROR}
                       >
                         {Object.values(GameGenre).map((genre) => (
                           <option key={genre} value={genre}>{genre}</option>
@@ -209,7 +228,7 @@ const LobbyScreen: React.FC = () => {
                       <span className="text-sm text-gray-400">Game Mode:</span>
                       <select 
                         className="bg-gray-900 text-white border border-gray-700 rounded p-1 text-sm"
-                        value={currentRoom.gameMode}
+                        value={currentRoom.gameMode || GameMode.FREE_TEXT}
                         onChange={handleGameModeChange}
                       >
                         {Object.values(GameMode).map((mode) => (
