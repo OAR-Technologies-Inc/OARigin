@@ -17,6 +17,7 @@ interface GameStore {
   presenceChannel: RealtimeChannel | null;
   deadPlayers: string[];
   progress: GameProgress;
+  isHost: boolean;
   setUser: (user: User | null) => void;
   setAuthenticated: (isAuth: boolean) => void;
   setRoom: (room: Room | null) => void;
@@ -32,7 +33,8 @@ interface GameStore {
   setProgress: (progress: GameProgress) => void;
   joinMatchmaking: (genre: GameGenre) => Promise<void>;
   leaveMatchmaking: () => Promise<void>;
-  createRoom: (genre: GameGenre, gameMode: GameMode) => Promise<void>;
+  createRoom: (genre: GameGenre, isPublic: boolean) => Promise<void>;
+  joinRoom: (userId: string, roomCode: string) => Promise<void>;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -48,6 +50,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   presenceChannel: null,
   deadPlayers: [],
   progress: {},
+  isHost: false,
 
   setUser: (user) => set({ currentUser: user }),
   setAuthenticated: (isAuth) => set({ isAuthenticated: isAuth }),
@@ -59,20 +62,21 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setGameState: (state) => set({ gameState: state }),
   setLoadingStory: (loading) => set({ loadingStory: loading }),
   setPresenceChannel: (channel) => set({ presenceChannel: channel }),
-  startGame: () =>
-    set((state) => ({
-      gameState: GameState.PLAYING,
-      currentRoom: state.currentRoom
-        ? { ...state.currentRoom, status: RoomStatus.IN_PROGRESS }
-        : null,
-      currentPlayerIndex: 0,
-      deadPlayers: [],
-      progress: {}
-    })),
-  markPlayerDead: (userId) =>
-    set((state) => ({
-      deadPlayers: [...state.deadPlayers, userId]
-    })),
+  
+  startGame: () => set((state) => ({
+    gameState: GameState.PLAYING,
+    currentRoom: state.currentRoom
+      ? { ...state.currentRoom, status: RoomStatus.IN_PROGRESS }
+      : null,
+    currentPlayerIndex: 0,
+    deadPlayers: [],
+    progress: {}
+  })),
+  
+  markPlayerDead: (userId) => set((state) => ({
+    deadPlayers: [...state.deadPlayers, userId]
+  })),
+  
   setProgress: (progress) => set({ progress }),
 
   joinMatchmaking: async (genre: GameGenre) => {
@@ -113,29 +117,84 @@ export const useGameStore = create<GameStore>((set, get) => ({
       .eq('status', 'waiting');
   },
 
-  createRoom: async (genre: GameGenre, gameMode: GameMode) => {
+  createRoom: async (genre: GameGenre, isPublic: boolean) => {
     const { currentUser } = get();
     if (!currentUser) throw new Error('No user logged in');
 
-    const roomId = uuidv4();
-    const room: Room = {
-      id: roomId,
-      host_id: currentUser.id,
-      genre,
-      gameMode,
-      status: RoomStatus.LOBBY,
-      players: [currentUser.id]
-    };
+    const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    
+    const { data: room, error } = await supabase
+      .from('rooms')
+      .insert({
+        id: uuidv4(),
+        code: roomCode,
+        genre_tag: genre,
+        status: RoomStatus.LOBBY,
+        host_id: currentUser.id,
+        is_public: isPublic,
+        game_mode: GameMode.FREE_TEXT
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    const { error: sessionError } = await supabase
+      .from('sessions')
+      .insert({
+        user_id: currentUser.id,
+        room_id: room.id,
+        is_active: true
+      });
+
+    if (sessionError) throw sessionError;
 
     set({
       currentRoom: room,
       players: [currentUser],
-      gameState: GameState.LOBBY,
-      storySegments: [],
-      currentVotes: [],
-      currentPlayerIndex: 0,
-      deadPlayers: [],
-      progress: {}
+      isHost: true,
+      gameState: GameState.LOBBY
+    });
+  },
+
+  joinRoom: async (userId: string, roomCode: string) => {
+    const { data: room, error } = await supabase
+      .from('rooms')
+      .select('*')
+      .eq('code', roomCode)
+      .eq('status', RoomStatus.LOBBY)
+      .single();
+
+    if (error || !room) throw new Error('Room not found or no longer available');
+
+    const { error: sessionError } = await supabase
+      .from('sessions')
+      .insert({
+        user_id: userId,
+        room_id: room.id,
+        is_active: true
+      });
+
+    if (sessionError) throw sessionError;
+
+    const { data: players } = await supabase
+      .from('sessions')
+      .select('user_id')
+      .eq('room_id', room.id)
+      .eq('is_active', true);
+
+    const isHost = room.host_id === userId;
+
+    set({
+      currentRoom: room,
+      players: players?.map(p => ({
+        id: p.user_id,
+        username: 'Player',
+        avatar: '',
+        status: 'alive'
+      })) || [],
+      isHost,
+      gameState: GameState.LOBBY
     });
   }
 }));
