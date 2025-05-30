@@ -62,7 +62,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setGameState: (state) => set({ gameState: state }),
   setLoadingStory: (loading) => set({ loadingStory: loading }),
   setPresenceChannel: (channel) => set({ presenceChannel: channel }),
-  
+
   startGame: () => set((state) => ({
     gameState: GameState.PLAYING,
     currentRoom: state.currentRoom
@@ -72,11 +72,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
     deadPlayers: [],
     progress: {}
   })),
-  
+
   markPlayerDead: (userId) => set((state) => ({
     deadPlayers: [...state.deadPlayers, userId]
   })),
-  
+
   setProgress: (progress) => set({ progress }),
 
   joinMatchmaking: async (genre: GameGenre) => {
@@ -122,7 +122,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!currentUser) throw new Error('No user logged in');
 
     const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-    
+
     const { data: room, error } = await supabase
       .from('rooms')
       .insert({
@@ -132,7 +132,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         status: RoomStatus.LOBBY,
         host_id: currentUser.id,
         is_public: isPublic,
-        game_mode: GameMode.FREE_TEXT
+        game_mode: 'free_text' // Set as string to match DB values
       })
       .select()
       .single();
