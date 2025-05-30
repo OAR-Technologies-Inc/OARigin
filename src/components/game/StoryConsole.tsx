@@ -41,14 +41,15 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
   // Debug rendering conditions
   useEffect(() => {
     console.log('----StoryConsole Render Check----');
+    console.log('currentRoom:', currentRoom);
+    console.log('gameMode:', currentRoom?.gameMode || 'undefined');
     console.log('isProcessing:', isProcessing);
     console.log('animationComplete:', animationComplete);
     console.log('currentPlayer:', currentPlayer);
-    console.log('gameMode:', currentRoom?.gameMode);
     console.log('gameState:', gameState);
     console.log('isPlayerDead:', isPlayerDead);
     console.log('isCurrentPlayerDead:', isCurrentPlayerDead);
-  }, [isProcessing, animationComplete, currentPlayer, currentRoom?.gameMode, gameState, isPlayerDead, isCurrentPlayerDead]);
+  }, [currentRoom, isProcessing, animationComplete, currentPlayer, gameState, isPlayerDead, isCurrentPlayerDead]);
 
   useEffect(() => {
     const checkPlayerStatus = async () => {
@@ -113,31 +114,8 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
     return "What do you do?";
   };
 
-  // Fallback UI if input doesn't render
-  if (!currentRoom?.gameMode) {
-    return (
-      <div className="flex flex-col h-full">
-        <Terminal
-          lines={getDisplayedLines()}
-          animatedLine={getActiveLine()}
-          typing={!!tempSegment}
-          onTypingComplete={() => {
-            if (tempSegment) {
-              addStorySegment(tempSegment);
-              setTempSegment(null);
-              setAnimationComplete(true);
-            }
-          }}
-          className="h-full min-h-[200px] md:min-h-[300px] max-h-[60vh] md:max-h-[70vh] text-sm md:text-base"
-        />
-        <div className="sticky bottom-0 bg-gray-900 p-4 rounded-lg shadow-lg">
-          <p className="text-red-500 font-mono text-sm text-center">
-            Error: Game mode not set. Please return to lobby.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  // Use fallback gameMode if undefined
+  const gameMode = currentRoom?.gameMode || GameMode.FREE_TEXT;
 
   return (
     <div className="flex flex-col h-full">
@@ -162,7 +140,7 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
         )}
       </div>
 
-      {currentRoom.gameMode === GameMode.FREE_TEXT && (
+      {gameMode === GameMode.FREE_TEXT && (
         <div className="sticky bottom-0 bg-gray-900 p-4 rounded-lg shadow-lg">
           <div className="mb-2 text-sm font-mono text-green-400">
             <strong>{currentPlayer || 'Player'}'s turn:</strong> {getStatusMessage()}
@@ -188,7 +166,7 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
         </div>
       )}
 
-      {currentRoom.gameMode === GameMode.MULTIPLE_CHOICE && (
+      {gameMode === GameMode.MULTIPLE_CHOICE && (
         <div className="sticky bottom-0 bg-gray-900 p-4 rounded-lg shadow-lg">
           <div className="mb-2 text-sm font-mono text-green-400">
             <strong>{currentPlayer || 'Player'}'s turn:</strong> {getStatusMessage()}
