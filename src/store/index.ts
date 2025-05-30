@@ -386,7 +386,6 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   if (error) throw error;
 }
 
-
   leaveMatchmaking: async () => {
     const { currentUser } = get();
     if (!currentUser) return;
