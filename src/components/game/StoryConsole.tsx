@@ -34,23 +34,11 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
   animationComplete,
   setAnimationComplete,
 }) => {
-  const { currentRoom, players } = useGameStore();
+  const { currentRoom, players, currentUser } = useGameStore();
   const [freestyleInput, setFreestyleInput] = useState('');
   const [isPlayerDead, setIsPlayerDead] = useState(false);
 
-  // Debug rendering and input submission
-  useEffect(() => {
-    console.log('----StoryConsole Render Check----');
-    console.log('currentRoom:', currentRoom);
-    console.log('gameMode:', currentRoom?.gameMode || 'undefined');
-    console.log('isProcessing:', isProcessing);
-    console.log('animationComplete:', animationComplete);
-    console.log('currentPlayer:', currentPlayer);
-    console.log('gameState:', gameState);
-    console.log('isPlayerDead:', isPlayerDead);
-    console.log('isCurrentPlayerDead:', isCurrentPlayerDead);
-  }, [currentRoom, isProcessing, animationComplete, currentPlayer, gameState, isPlayerDead, isCurrentPlayerDead]);
-
+  // Sync player death with Supabase
   useEffect(() => {
     const checkPlayerStatus = async () => {
       const { data: { session }, error } = await supabase.auth.getSession();
@@ -70,6 +58,19 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
       setFreestyleInput('');
     }
   }, [isPlayerDead, isCurrentPlayerDead, gameState]);
+
+  // Debug rendering
+  useEffect(() => {
+    console.log('----StoryConsole Render Check----');
+    console.log('currentRoom:', currentRoom);
+    console.log('gameMode:', currentRoom?.gameMode);
+    console.log('isProcessing:', isProcessing);
+    console.log('animationComplete:', animationComplete);
+    console.log('currentPlayer:', currentPlayer);
+    console.log('gameState:', gameState);
+    console.log('isPlayerDead:', isPlayerDead);
+    console.log('isCurrentPlayerDead:', isCurrentPlayerDead);
+  }, [currentRoom, isProcessing, animationComplete, currentPlayer, gameState, isPlayerDead, isCurrentPlayerDead]);
 
   const getDisplayedLines = (): string[] => {
     const lines: string[] = [];
@@ -120,7 +121,6 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
     return "What do you do?";
   };
 
-  // Use fallback gameMode if undefined
   const gameMode = currentRoom?.gameMode || GameMode.FREE_TEXT;
 
   return (
