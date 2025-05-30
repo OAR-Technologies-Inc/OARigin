@@ -86,13 +86,15 @@ const Home: React.FC = () => {
       const { currentUser, joinRoom } = useGameStore.getState();
       if (!currentUser) return;
 
-      const { data: waitEntry } = await supabase
-        .from('waiting_pool')
-        .select('status')
-        .eq('user_id', currentUser.id)
-        .maybeSingle();
+      const { data: waitEntries } = await supabase
+  .from('waiting_pool')
+  .select('status')
+  .eq('user_id', currentUser.id)
+  .eq('status', 'matched')
+  .limit(1);
 
-      if (!waitEntry || waitEntry.status !== 'matched') return;
+if (!waitEntries || waitEntries.length === 0) return;
+
 
       const { data: session } = await supabase
         .from('sessions')
