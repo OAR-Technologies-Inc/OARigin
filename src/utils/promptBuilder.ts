@@ -24,7 +24,7 @@ export function buildNarrationPrompt({
   playerInput = '',
   deadPlayers = [],
   newPlayers = [],
-  gameMode = [],
+  gameMode,
   tone = 'neutral',
   playerRoles = {},
   storyPhase = 'opening',
