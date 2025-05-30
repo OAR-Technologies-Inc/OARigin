@@ -1,32 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, UserPlus, Play, Users, Phone } from 'lucide-react';
-import { useGameStore } from '../../store';
+import { Clock, UserPlus, Play, Users, Share2, Copy, Phone } from 'lucide-react';
+import { useGameStore } from '../../store'; // Updated import path
 import Card from '../ui/Card';
 import Button from '../ui/Button';
-import { GameGenre, GameMode, GameState } from '../../types';
-import { supabase } from '../../lib/supabase';
+import { GameGenre, GameMode } from '../../types';
 
 const LobbyScreen: React.FC = () => {
   const navigate = useNavigate();
-  const {
-    currentRoom,
-    players,
-    isHost,
-    startGame,
-    setRoom,
-    gameState,
-  } = useGameStore();
-
+  const { currentRoom, players, isHost, startGame, setRoom } = useGameStore();
   const [countdown, setCountdown] = useState<number | null>(null);
   const [showShareSuccess, setShowShareSuccess] = useState(false);
-
-  useEffect(() => {
-    if (!currentRoom) {
-      console.warn('No currentRoom set, redirecting to home');
-      navigate('/');
-    }
-  }, [currentRoom, navigate]);
 
   const handleGameModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (!isHost || !currentRoom) return;
@@ -55,19 +39,67 @@ const LobbyScreen: React.FC = () => {
 
     const inviteText = `Join my OARigin adventure! Room code: ${currentRoom.code}\nhttps://oarigin.app/join/${currentRoom.code}`;
 
+    // Check if the Contact Picker API is available
+    if ('contacts' in navigator && 'ContactsManager' in window) {
+      try {
+        const contacts = await (navigator.contacts as any).select(
+          ['tel', 'email'],
+          { multiple: true }
+        );
+
+        if (contacts.length > 0) {
+          // Use the SMS API if available
+          if ('sms' in navigator) {
+            const numbers = contacts
+              .map((contact: any) => contact.tel)
+              .flat()
+              .join(',');
+            window.location.href = `sms:${numbers}?body=${encodeURIComponent(inviteText)}`;
+          } else {
+            // Fallback to share API
+            await navigator.share({
+              title: 'Join OARigin Adventure',
+              text: inviteText,
+            });
+          }
+          return;
+        }
+      } catch (error) {
+        console.log('Contact picker error:', error);
+        // Fall through to clipboard copy
+      }
+    }
+
+    // Fallback: Copy to clipboard
     try {
       await navigator.clipboard.writeText(inviteText);
       setShowShareSuccess(true);
       setTimeout(() => setShowShareSuccess(false), 2000);
     } catch (error) {
-      console.error('Failed to copy invite:', error);
+      console.error('Failed to copy:', error);
     }
   };
 
+  // If currentRoom is null, navigate to home
   if (!currentRoom) {
+    navigate('/');
+    return null;
+  }
+
+  // If players array is empty or not initialized, show a loading state
+  if (!players || players.length === 0) {
     return (
-      <div className="text-center text-white mt-10 font-mono">
-        Loading room data...
+      <div className="max-w-4xl mx-auto p-4">
+        <Card className="p-6" glowColor="amber">
+          <div className="text-center">
+            <h1 className="text-2xl font-mono font-bold text-amber-500 mb-1">
+              Game Lobby
+            </h1>
+            <p className="text-gray-400">
+              Loading players...
+            </p>
+          </div>
+        </Card>
       </div>
     );
   }
@@ -85,7 +117,7 @@ const LobbyScreen: React.FC = () => {
         </div>
 
         <div className="grid md:grid-cols-2 gap-6">
-          {/* Room Info & Share */}
+          {/* Room info */}
           <div className="space-y-4">
             <div className="bg-gray-800 rounded-lg p-4">
               <h2 className="text-lg font-mono font-semibold text-green-500 mb-2 flex items-center">
@@ -94,17 +126,15 @@ const LobbyScreen: React.FC = () => {
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-400">Room Code:</span>
-                  <span className="text-amber-500 font-mono font-bold">{currentRoom.code}</span>
+                  <span className="text-amber-500 font-mono font-bold">{currentRoom.code || 'N/A'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-400">Genre:</span>
-                  <span className="text-white">{currentRoom.genreTag}</span>
+                  <span className="text-white">{currentRoom.genreTag || 'Unknown'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-400">Host:</span>
-                  <span className="text-white">
-                    {players.find(p => p.id === currentRoom.hostId)?.username || 'Unknown'}
-                  </span>
+                  <span className="text-white">{players.find(p => p.id === currentRoom.hostId)?.username || 'Unknown'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-400">Players:</span>
@@ -122,7 +152,7 @@ const LobbyScreen: React.FC = () => {
                   Share this code with friends to join your game:
                 </p>
                 <div className="font-mono text-xl text-amber-500 font-bold text-center p-2 bg-gray-900 rounded border border-gray-700">
-                  {currentRoom.code}
+                  {currentRoom.code || 'N/A'}
                 </div>
               </div>
 
@@ -144,7 +174,7 @@ const LobbyScreen: React.FC = () => {
             </div>
           </div>
 
-          {/* Player List + Host Options */}
+          {/* Players list */}
           <div>
             <h2 className="text-lg font-mono font-semibold text-green-500 mb-2 flex items-center">
               <Users size={18} className="mr-2" /> Players ({players.length}/4)
@@ -176,7 +206,7 @@ const LobbyScreen: React.FC = () => {
               )}
             </div>
 
-            {isHost && players.length < 4 && (
+            {isHost && (
               <div className="space-y-4">
                 <div className="bg-gray-800 rounded-lg p-4">
                   <h3 className="font-mono text-sm font-semibold text-green-500 mb-2 flex items-center">
@@ -225,7 +255,7 @@ const LobbyScreen: React.FC = () => {
               </div>
             )}
 
-            {!isHost && gameState !== GameState.PLAYING && (
+            {!isHost && (
               <div className="text-center text-gray-400 font-mono mt-4">
                 Waiting for host to start the game...
               </div>
