@@ -23,7 +23,7 @@ Deno.serve(async (req: Request) => {
       throw new Error('Method not allowed');
     }
 
-    const { prompt, gameMode } = await req.json();
+    const { prompt, gameMode, playerInput } = await req.json();
 
     if (!prompt) {
       throw new Error('Prompt is required');
@@ -31,10 +31,11 @@ Deno.serve(async (req: Request) => {
 
     console.log('Received prompt:', prompt);
     console.log('Game mode:', gameMode);
+    console.log('Player input:', playerInput);
 
     const systemPrompt = gameMode === 'free_text'
-      ? 'You are a cooperative AI storyteller. Create engaging, real-time story scenes based on player choices. Respond with narrative text only, without numbered options or choices.'
-      : 'You are a cooperative AI storyteller. Create engaging, real-time story scenes based on player choices. Respond with narrative text followed by 3-5 numbered options in the format: Choices:\n1. Option\n2. Option';
+      ? 'You are a cooperative AI storyteller. Create engaging, real-time story scenes based on player choices. Respond with narrative text only, without numbered options or choices. If a player has died (indicated by [PLAYER_DEATH] or narrative death), respond with "You have died and can no longer act." and do not generate further story content for that player.'
+      : 'You are a cooperative AI storyteller. Create engaging, real-time story scenes based on player choices. Respond with narrative text followed by 3-5 numbered options in the format: Choices:\n1. Option\n2. Option. If a player has died (indicated by [PLAYER_DEATH] or narrative death), respond with "You have died and can no longer act." and do not generate further options or story content for that player.';
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4',
