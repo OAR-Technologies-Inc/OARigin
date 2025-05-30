@@ -31,6 +31,7 @@ interface GameStore {
   startGame: () => void;
   markPlayerDead: (userId: string) => void;
   setProgress: (progress: GameProgress) => void;
+  updateProgress: (progress: Partial<GameProgress>) => void;
   nextPlayerTurn: () => void;
   checkGameEnd: () => void;
   joinMatchmaking: (genre: GameGenre) => Promise<void>;
@@ -80,6 +81,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
   })),
 
   setProgress: (progress) => set({ progress }),
+
+  updateProgress: (progress) => set((state) => ({
+    progress: { ...state.progress, ...progress }
+  })),
 
   nextPlayerTurn: () => set((state) => ({
     currentPlayerIndex: (state.currentPlayerIndex + 1) % state.players.length,
