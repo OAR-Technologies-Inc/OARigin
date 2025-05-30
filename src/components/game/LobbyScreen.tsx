@@ -4,7 +4,7 @@ import { Clock, Copy, Play, Users } from 'lucide-react';
 import { useGameStore } from '../../store';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
-import { GameGenre, GameMode, GameState } from '../../types';
+import { GameGenre, GameMode } from '../../types';
 
 const LobbyScreen: React.FC = () => {
   const navigate = useNavigate();
@@ -35,7 +35,7 @@ const LobbyScreen: React.FC = () => {
   };
 
   const handleShare = async () => {
-    if (!currentRoom) return;
+    if (!currentRoom?.code) return;
     const inviteText = `Join my OARigin adventure! Room code: ${currentRoom.code}\nhttps://oarigin.app/join/${currentRoom.code}`;
     try {
       await navigator.clipboard.writeText(inviteText);
@@ -51,7 +51,7 @@ const LobbyScreen: React.FC = () => {
     return null;
   }
 
-  if (!players || players.length === 0) {
+  if (!Array.isArray(players) || players.length === 0) {
     return (
       <div className="flex justify-center items-center min-h-screen bg-black">
         <Card className="p-6 max-w-md w-full border-2 border-green-500 bg-black">
@@ -62,6 +62,11 @@ const LobbyScreen: React.FC = () => {
       </div>
     );
   }
+
+  const hostPlayer = players.find(p => p.id === currentRoom.hostId);
+  const roomCode = currentRoom.code || 'N/A';
+  const genre = currentRoom.genreTag || 'Unknown';
+  const hostName = hostPlayer?.username || 'Unknown';
 
   return (
     <div className="flex justify-center items-center min-h-screen bg-black">
@@ -77,9 +82,9 @@ const LobbyScreen: React.FC = () => {
           <div className="border border-green-500 p-2">
             <pre className="text-green-500 font-mono text-sm">
               +---------------- Room Status ----------------+
-              | Code: {currentRoom.code.padEnd(32, ' ')} |
-              | Genre: {currentRoom.genreTag.padEnd(31, ' ')} |
-              | Host: {(players.find(p => p.id === currentRoom.hostId)?.username || 'Unknown').padEnd(32, ' ')} |
+              | Code: {(roomCode).padEnd(32, ' ')} |
+              | Genre: {(genre).padEnd(31, ' ')} |
+              | Host: {(hostName).padEnd(32, ' ')} |
               | Players: {players.length}/4{''.padEnd(28, ' ')} |
               +--------------------------------------------+
             </pre>
@@ -93,7 +98,7 @@ const LobbyScreen: React.FC = () => {
           </h2>
           <div className="border border-amber-500 p-2 bg-gray-900 animate-pulse">
             <p className="text-amber-500 font-mono text-center">
-              {currentRoom.code}
+              {roomCode}
             </p>
           </div>
           <Button
@@ -124,7 +129,7 @@ const LobbyScreen: React.FC = () => {
                 key={player.id}
                 className="text-green-500 font-mono text-sm"
               >
-                &gt; {player.username}
+                > {player.username || 'Unknown'}
                 {player.id === currentRoom.hostId && (
                   <span className="text-amber-500"> (Host)</span>
                 )}
@@ -146,10 +151,14 @@ const LobbyScreen: React.FC = () => {
             </h2>
             <div className="border border-green-500 p-2 mb-4">
               <div className="flex justify-between items-center mb-2">
-                <span className="text-green-500 font-mono text-sm">&gt; Genre:</span>
+                <span className="text-green-500 font-mono text-sm">> Genre:</span>
                 <select
                   className="bg-black text-green-500 border border-green-500 font-mono text-sm p-1"
-                  defaultValue={currentRoom.genreTag || GameGenre.HORROR}
+                  value={currentRoom.genreTag || GameGenre.HORROR}
+                  onChange={(e) => {
+                    if (!isHost || !currentRoom) return;
+                    setRoom({ ...currentRoom, genreTag: e.target.value as GameGenre });
+                  }}
                 >
                   {Object.values(GameGenre).map((genre) => (
                     <option key={genre} value={genre} className="bg-black">
@@ -159,7 +168,7 @@ const LobbyScreen: React.FC = () => {
                 </select>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-green-500 font-mono text-sm">&gt; Mode:</span>
+                <span className="text-green-500 font-mono text-sm">> Mode:</span>
                 <select
                   className="bg-black text-green-500 border border-green-500 font-mono text-sm p-1"
                   value={currentRoom.gameMode || GameMode.FREE_TEXT}
