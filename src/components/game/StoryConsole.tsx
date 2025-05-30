@@ -29,6 +29,7 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
   gameState,
 }) => {
   const { currentRoom, players } = useGameStore();
+console.log('DEBUG currentRoom.gameMode:', currentRoom?.gameMode);
   const [freestyleInput, setFreestyleInput] = useState('');
   const [animationDone, setAnimationDone] = useState(false);
   const [isPlayerDead, setIsPlayerDead] = useState(false);
