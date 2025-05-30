@@ -41,10 +41,12 @@ const GameScreen: React.FC = () => {
     console.log('----GameScreen Store Check----');
     console.log('currentRoom:', currentRoom);
     console.log('gameMode:', currentRoom?.gameMode);
+    console.log('genreTag:', currentRoom?.genreTag);
     console.log('players:', players);
     console.log('currentPlayerIndex:', currentPlayerIndex);
     console.log('nextPlayerTurn:', nextPlayerTurn);
-  }, [currentRoom, players, currentPlayerIndex, nextPlayerTurn]);
+    console.log('checkGameEnd:', checkGameEnd);
+  }, [currentRoom, players, currentPlayerIndex, nextPlayerTurn, checkGameEnd]);
 
   useEffect(() => {
     if (!currentRoom) navigate('/');
@@ -58,7 +60,7 @@ const GameScreen: React.FC = () => {
 
         try {
           const initialStory = await generateStoryBeginning(
-            String(currentRoom.genreTag),
+            currentRoom.genreTag || 'adventure',
             players,
             currentRoom
           );
@@ -105,7 +107,7 @@ const GameScreen: React.FC = () => {
     try {
       const deadPlayers = players.filter(p => p.status === 'dead').map(p => p.username);
       const { text, playerDied } = await generateStoryContinuation({
-        genre: String(currentRoom.genreTag),
+        genre: currentRoom.genreTag || 'adventure',
         players: players.map(p => p.username),
         storyLog: storySegments.map(s => s.aiResponse || s.content).filter(Boolean),
         currentPlayer: players[currentPlayerIndex].username,
@@ -120,7 +122,7 @@ const GameScreen: React.FC = () => {
         setGameState(GameState.ENDED);
       }
 
-      const updatedProgress = parseProgressUpdates(text, currentRoom.genreTag, progress);
+      const updatedProgress = parseProgressUpdates(text, currentRoom.genreTag || 'adventure', progress);
       updateProgress(updatedProgress);
 
       const newSegment: StorySegment = {
@@ -146,7 +148,12 @@ const GameScreen: React.FC = () => {
         });
       }
 
-      checkGameEnd();
+      // Fallback checkGameEnd logic
+      if (typeof checkGameEnd === 'function') {
+        checkGameEnd();
+      } else {
+        console.warn('checkGameEnd is not a function, skipping');
+      }
     } catch (error) {
       console.error('Handle choice error:', error);
       const fallback: StorySegment = {
@@ -168,7 +175,12 @@ const GameScreen: React.FC = () => {
           currentPlayerIndex: (currentPlayerIndex + 1) % players.length,
         });
       }
-      checkGameEnd();
+      // Fallback checkGameEnd logic for error case
+      if (typeof checkGameEnd === 'function') {
+        checkGameEnd();
+      } else {
+        console.warn('checkGameEnd is not a function, skipping');
+      }
     } finally {
       setLoadingStory(false);
     }
@@ -196,7 +208,7 @@ const GameScreen: React.FC = () => {
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" icon={<ArrowLeft size={16} />} onClick={() => navigate('/')}>Exit</Button>
           <h1 className="font-mono text-base md:text-xl text-green-500 hidden md:block">
-            {currentRoom?.genreTag} Adventure
+            {currentRoom?.genreTag || 'Adventure'} Adventure
           </h1>
         </div>
         <div className="flex gap-1 md:gap-2">
@@ -233,7 +245,7 @@ const GameScreen: React.FC = () => {
   );
 };
 
-const parseProgressUpdates = (aiResponse: string, genre: string, progress: any): Partial<GameProgress> => {
+const parseProgressUpdates = (aiResponse: string, genre: string = 'adventure', progress: any): Partial<GameProgress> => {
   const updates: Partial<GameProgress> = {};
   const text = aiResponse.toLowerCase();
   if (genre.toLowerCase() === 'survival') {
