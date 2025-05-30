@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Clock, Copy, Play, Users } from 'lucide-react';
-import { useGameStore } from '../../store';
+import { useGameStore } from '../store';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
-import { GameGenre, GameMode } from '../../types';
+import { GameGenre, GameMode } from '../types';
 
 const LobbyScreen: React.FC = () => {
   const navigate = useNavigate();
@@ -12,10 +12,12 @@ const LobbyScreen: React.FC = () => {
   const [countdown, setCountdown] = useState<number | null>(null);
   const [showShareSuccess, setShowShareSuccess] = useState(false);
 
-  // Debug data to diagnose issues (remove after testing)
   useEffect(() => {
-    console.log('LobbyScreen Data:', { currentRoom, players, isHost });
-  }, [currentRoom, players, isHost]);
+    if (!currentRoom) {
+      navigate('/');
+      return;
+    }
+  }, [currentRoom, navigate]);
 
   const handleGameModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (!isHost || !currentRoom) return;
@@ -58,11 +60,6 @@ const LobbyScreen: React.FC = () => {
   };
 
   if (!currentRoom) {
-    navigate('/');
-    return null;
-  }
-
-  if (!Array.isArray(players) || players.length === 0) {
     return (
       <div className="flex justify-center items-center min-h-screen bg-black">
         <Card className="p-6 max-w-md w-full border-2 border-green-500 bg-black">
@@ -74,7 +71,18 @@ const LobbyScreen: React.FC = () => {
     );
   }
 
-  // Prepare room data with safe access
+  if (!Array.isArray(players) || players.length === 0) {
+    return (
+      <div className="flex justify-center items-center min-h-screen bg-black">
+        <Card className="p-6 max-w-md w-full border-2 border-green-500 bg-black">
+          <p className="text-green-500 font-mono text-center animate-pulse">
+            Waiting for Players...
+          </p>
+        </Card>
+      </div>
+    );
+  }
+
   const roomCode = currentRoom.code || 'N/A';
   const genre = currentRoom.genreTag || GameGenre.HORROR;
   const hostPlayer = players.find(p => p.id === currentRoom.hostId);
@@ -84,10 +92,8 @@ const LobbyScreen: React.FC = () => {
   return (
     <div className="flex justify-center items-center min-h-screen bg-black">
       <Card className="p-6 max-w-md w-full border-2 border-green-500 bg-black relative">
-        {/* CRT scanline effect */}
         <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(0,255,0,0.05)_1px,transparent_1px)] bg-[size:4px_4px] opacity-50"></div>
 
-        {/* Room Status */}
         <div className="mb-6">
           <h1 className="text-green-500 font-mono text-2xl text-center mb-2">
             OARigin Terminal
@@ -104,7 +110,6 @@ const LobbyScreen: React.FC = () => {
           </div>
         </div>
 
-        {/* Transmit Invite */}
         <div className="mb-6">
           <h2 className="text-green-500 font-mono text-lg mb-2 flex items-center">
             <Copy size={16} className="mr-2" /> Transmit Invite
@@ -120,7 +125,6 @@ const LobbyScreen: React.FC = () => {
             icon={<Copy size={16} />}
             onClick={handleShare}
             className="mt-2 bg-green-500 hover:bg-green-600 text-black font-mono"
-            aria-label="Copy invite code"
           >
             [COPY]
           </Button>
@@ -131,7 +135,6 @@ const LobbyScreen: React.FC = () => {
           )}
         </div>
 
-        {/* Crew Manifest */}
         <div className="mb-6">
           <h2 className="text-green-500 font-mono text-lg mb-2 flex items-center">
             <Users size={16} className="mr-2" /> Crew Manifest
@@ -156,7 +159,6 @@ const LobbyScreen: React.FC = () => {
           </div>
         </div>
 
-        {/* Host Controls */}
         <div>
           <h2 className="text-green-500 font-mono text-lg mb-2 flex items-center">
             <Clock size={16} className="mr-2" /> Configure Mission
@@ -200,7 +202,6 @@ const LobbyScreen: React.FC = () => {
                 onClick={handleStartGame}
                 disabled={countdown !== null}
                 className="bg-amber-500 hover:bg-amber-600 text-black font-mono"
-                aria-label="Start game"
               >
                 {countdown !== null ? `[LAUNCHING IN ${countdown}...]` : '[LAUNCH]'}
               </Button>
