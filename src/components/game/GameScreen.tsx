@@ -48,7 +48,7 @@ const GameScreen: React.FC = () => {
 
         try {
           const initialStory = await generateStoryBeginning(
-            currentRoom.genreTag,
+            String(currentRoom.genreTag),
             players,
             currentRoom
           );
