@@ -32,10 +32,27 @@ const cleanResponse = (response: string): string => {
 };
 
 export const generateStoryBeginning = async (
-  genre: GameGenre,
+  genre: string,
   players: User[],
   room: Room
 ) => {
+  const prompt = buildNarrationPrompt({
+    genre: String(genre),
+    players: players.map(p => p.username),
+    storyLog: [],
+    currentPlayer: '',
+    playerInput: '',
+    deadPlayers: [],
+    newPlayers: [],
+    gameMode: room.gameMode,
+    tone: 'tense',
+    playerRoles: {},
+    storyPhase: 'opening',
+    sessionGoal: 'medium',
+    inventory: [],
+    turnCount: 0,
+    progress: {},
+  });
   try {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
