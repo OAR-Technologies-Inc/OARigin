@@ -1,270 +1,423 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Clock, UserPlus, Play, Users, Share2, Copy, Phone } from 'lucide-react';
-import { useGameStore } from '../../store'; // Updated import path
-import Card from '../ui/Card';
-import Button from '../ui/Button';
-import { GameGenre, GameMode } from '../../types';
+import { create } from 'zustand';
+import { GameGenre, Room, User, StorySegment, Vote, RoomStatus, GameMode, GameState, GameProgress } from '../types';
+import { v4 as uuidv4 } from 'uuid';
+import { supabase } from '../lib/supabase';
+import { RealtimeChannel } from '@supabase/supabase-js';
 
-const LobbyScreen: React.FC = () => {
-  const navigate = useNavigate();
-  const { currentRoom, players, isHost, startGame, setRoom } = useGameStore();
-  const [countdown, setCountdown] = useState<number | null>(null);
-  const [showShareSuccess, setShowShareSuccess] = useState(false);
+interface GameStoreState {
+  currentUser: User | null;
+  isAuthenticated: boolean;
 
-  const handleGameModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    if (!isHost || !currentRoom) return;
-    const newGameMode = e.target.value as GameMode;
-    setRoom({ ...currentRoom, gameMode: newGameMode });
-  };
+  currentRoom: Room | null;
+  players: User[];
+  previousPlayers: User[];
+  newPlayers: User[];
+  isHost: boolean;
 
-  const handleStartGame = () => {
-    if (!isHost) return;
-    setCountdown(5);
-    const interval = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev === null || prev <= 1) {
-          clearInterval(interval);
-          startGame();
-          navigate('/game');
-          return null;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  };
+  storySegments: StorySegment[];
+  currentVotes: Vote[];
+  gameState: GameState;
+  loadingStory: boolean;
+  currentPlayerIndex: number;
+  deadPlayers: string[];
+  progress: GameProgress;
 
-  const handleShare = async () => {
-    if (!currentRoom) return;
+  setUser: (user: User | null) => void;
+  setAuthenticated: (isAuthenticated: boolean) => void;
+  setRoom: (room: Room | null) => void;
+  setPlayers: (players: User[]) => void;
+  setPlayerStatus: (userId: string, status: 'alive' | 'dead') => void;
+  clearNewPlayers: () => void;
+  addStorySegment: (segment: StorySegment) => void;
+  addVote: (vote: Vote) => void;
+  startGame: () => void;
+  endGame: () => void;
+  setLoadingStory: (loading: boolean) => void;
+  setCurrentPlayerIndex: (index: number) => void;
+  nextPlayerTurn: () => void;
+  generateTempUser: (username: string) => void;
+  createRoom: (genre: GameGenre, isPublic: boolean) => Promise<string>;
+  joinRoom: (userId: string, roomCode: string) => Promise<void>;
+  leaveRoom: () => Promise<void>;
+  setPlayerDeath: (playerName: string) => void;
+  checkGameEnd: () => void;
+  updateProgress: (updates: Partial<GameProgress>) => void;
+  subscribeToRoom: (roomId: string) => () => void;
+  joinMatchmaking: (genre: GameGenre) => Promise<void>;
+  leaveMatchmaking: () => Promise<void>;
+}
 
-    const inviteText = `Join my OARigin adventure! Room code: ${currentRoom.code}\nhttps://oarigin.app/join/${currentRoom.code}`;
+let presenceChannel: RealtimeChannel | null = null;
 
-    // Check if the Contact Picker API is available
-    if ('contacts' in navigator && 'ContactsManager' in window) {
-      try {
-        const contacts = await (navigator.contacts as any).select(
-          ['tel', 'email'],
-          { multiple: true }
-        );
+export const useGameStore = create<GameStoreState>((set, get) => ({
+  currentUser: null,
+  isAuthenticated: false,
+  currentRoom: null,
+  players: [],
+  previousPlayers: [],
+  newPlayers: [],
+  isHost: false,
+  storySegments: [],
+  currentVotes: [],
+  gameState: GameState.PLAYING,
+  loadingStory: false,
+  currentPlayerIndex: 0,
+  deadPlayers: [],
+  progress: {},
 
-        if (contacts.length > 0) {
-          // Use the SMS API if available
-          if ('sms' in navigator) {
-            const numbers = contacts
-              .map((contact: any) => contact.tel)
-              .flat()
-              .join(',');
-            window.location.href = `sms:${numbers}?body=${encodeURIComponent(inviteText)}`;
-          } else {
-            // Fallback to share API
-            await navigator.share({
-              title: 'Join OARigin Adventure',
-              text: inviteText,
-            });
-          }
-          return;
-        }
-      } catch (error) {
-        console.log('Contact picker error:', error);
-        // Fall through to clipboard copy
-      }
-    }
+  setUser: (user) => set({ currentUser: user }),
 
-    // Fallback: Copy to clipboard
-    try {
-      await navigator.clipboard.writeText(inviteText);
-      setShowShareSuccess(true);
-      setTimeout(() => setShowShareSuccess(false), 2000);
-    } catch (error) {
-      console.error('Failed to copy:', error);
-    }
-  };
+  setAuthenticated: (isAuthenticated) => set({ isAuthenticated }),
 
-  // If currentRoom is null, navigate to home
-  if (!currentRoom) {
-    navigate('/');
-    return null;
-  }
+  setRoom: (room) =>
+    set((state) => ({
+      currentRoom: room,
+      isHost: room ? state.currentUser?.id === room.hostId : false
+    })),
 
-  // If players array is empty or not initialized, show a loading state
-  if (!players || players.length === 0) {
-    return (
-      <div className="max-w-4xl mx-auto p-4">
-        <Card className="p-6" glowColor="amber">
-          <div className="text-center">
-            <h1 className="text-2xl font-mono font-bold text-amber-500 mb-1">
-              Game Lobby
-            </h1>
-            <p className="text-gray-400">
-              Loading players...
-            </p>
-          </div>
-        </Card>
-      </div>
+  setPlayers: (players) => set((state) => {
+    const newPlayers = players.filter(
+      (player) => !state.previousPlayers.some((prev) => prev.id === player.id)
     );
+    const allPlayers = players.map(newPlayer => ({
+      ...newPlayer,
+      status: state.players.find(p => p.id === newPlayer.id)?.status || 'alive'
+    }));
+
+    // Auto-start if full group of 4
+    if (allPlayers.length === 4 && state.isHost) {
+      setTimeout(() => {
+        get().startGame();
+      }, 1000);
+    }
+
+    return {
+      players: allPlayers,
+      previousPlayers: players,
+      newPlayers: [...state.newPlayers, ...newPlayers]
+    };
+  }),
+
+  setPlayerStatus: (userId, status) =>
+    set((state) => ({
+      players: state.players.map(player =>
+        player.id === userId ? { ...player, status } : player
+      )
+    })),
+
+  clearNewPlayers: () => set({ newPlayers: [] }),
+
+  addStorySegment: (segment) =>
+    set((state) => ({
+      storySegments: [...state.storySegments, segment],
+      currentVotes: []
+    })),
+
+  addVote: (vote) =>
+    set((state) => ({
+      currentVotes: [...state.currentVotes, vote]
+    })),
+
+  startGame: () =>
+    set((state) => ({
+      gameState: GameState.PLAYING,
+      currentRoom: state.currentRoom
+        ? { ...state.currentRoom, status: RoomStatus.IN_PROGRESS }
+        : null,
+      currentPlayerIndex: 0,
+      deadPlayers: [],
+      progress: {}
+    })),
+
+  endGame: () =>
+    set((state) => ({
+      gameState: GameState.ENDED,
+      currentRoom: state.currentRoom
+        ? { ...state.currentRoom, status: RoomStatus.CLOSED }
+        : null
+    })),
+
+  setLoadingStory: (loading) => set({ loadingStory: loading }),
+
+  setCurrentPlayerIndex: (index) => set({ currentPlayerIndex: index }),
+
+  nextPlayerTurn: () =>
+    set((state) => {
+      const alivePlayers = state.players.filter(p => p.status === 'alive');
+      if (alivePlayers.length === 0) {
+        return { currentPlayerIndex: 0, gameState: GameState.ENDED };
+      }
+
+      let nextIndex = state.currentPlayerIndex;
+      do {
+        nextIndex = (nextIndex + 1) % state.players.length;
+      } while (state.players[nextIndex].status === 'dead' && nextIndex !== state.currentPlayerIndex);
+
+      return { currentPlayerIndex: nextIndex };
+    }),
+
+  generateTempUser: (username) =>
+    set((state) => {
+      if (!state.currentUser) {
+        return {
+          currentUser: {
+            id: uuidv4(),
+            username,
+            avatar: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${username}`,
+            oarWalletLinked: false,
+            status: 'alive'
+          },
+          isAuthenticated: true
+        };
+      }
+      return state;
+    }),
+
+  createRoom: async (genre, isPublic) => {
+    const { currentUser } = get();
+    if (!currentUser) throw new Error('No user logged in');
+
+    const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+    const { data: room, error } = await supabase
+      .from('rooms')
+      .insert({
+        code: roomCode,
+        genre_tag: genre,
+        host_id: currentUser.id,
+        is_public: isPublic,
+        status: RoomStatus.OPEN
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    const { error: sessionError } = await supabase
+      .from('sessions')
+      .insert({
+        user_id: currentUser.id,
+        room_id: room.id
+      });
+
+    if (sessionError) throw sessionError;
+
+    set({
+      currentRoom: {
+        ...room,
+        genreTag: room.genre_tag
+      },
+      isHost: true,
+      players: [{ ...currentUser, status: 'alive' }],
+      previousPlayers: [{ ...currentUser, status: 'alive' }],
+      newPlayers: [],
+      currentPlayerIndex: 0,
+      gameState: GameState.PLAYING,
+      deadPlayers: [],
+      progress: {}
+    });
+
+    return roomCode;
+  },
+
+  joinRoom: async (userId: string, roomCode: string) => {
+    if (!userId) throw new Error('Invalid user ID');
+    const { data: room, error: roomError } = await supabase
+      .from('rooms')
+      .select()
+      .eq('code', roomCode)
+      .single();
+
+    if (roomError) throw roomError;
+
+    const { data: existingSession } = await supabase
+      .from('sessions')
+      .select()
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (existingSession) {
+      throw new Error('You are already in an active session.');
+    }
+
+    const { error: sessionError } = await supabase
+      .from('sessions')
+      .insert({
+        user_id: userId,
+        room_id: room.id
+      });
+
+    if (sessionError) throw sessionError;
+
+    const { data: sessionPlayers, error: sessionFetchError } = await supabase
+      .from('sessions')
+      .select('user_id')
+      .eq('room_id', room.id)
+      .eq('is_active', true);
+
+    if (sessionFetchError || !sessionPlayers) throw new Error('Failed to fetch session players');
+
+    const userIds = sessionPlayers.map(s => s.user_id);
+    const { data: profiles, error: profileError } = await supabase
+      .from('profiles')
+      .select('id, username, avatar_url')
+      .in('id', userIds);
+
+    if (profileError) throw profileError;
+
+    const convertedProfiles = profiles.map(p => ({
+      id: p.id,
+      username: p.username,
+      avatar: p.avatar_url,
+      oarWalletLinked: false,
+      status: 'alive'
+    }));
+
+    set({
+      currentRoom: {
+        ...room,
+        genreTag: room.genre_tag
+      },
+      isHost: room.host_id === userId,
+      players: convertedProfiles,
+      previousPlayers: convertedProfiles,
+      newPlayers: [],
+      currentPlayerIndex: 0
+    });
+  },
+
+  leaveRoom: async () => {
+    const { currentRoom, currentUser } = get();
+    if (!currentRoom || !currentUser) return;
+
+    await supabase
+      .from('sessions')
+      .update({ is_active: false })
+      .eq('user_id', currentUser.id)
+      .eq('room_id', currentRoom.id);
+
+    set({
+      currentRoom: null,
+      isHost: false,
+      players: [],
+      previousPlayers: [],
+      newPlayers: [],
+      storySegments: [],
+      currentVotes: [],
+      gameState: GameState.PLAYING,
+      currentPlayerIndex: 0,
+      deadPlayers: [],
+      progress: {}
+    });
+  },
+
+  setPlayerDeath: (playerName) =>
+    set((state) => {
+      const player = state.players.find(p => p.username === playerName);
+      if (!player) return state;
+
+      const updatedPlayers = state.players.map(p =>
+        p.username === playerName ? { ...p, status: 'dead' } : p
+      );
+
+      const updatedDeadPlayers = [...state.deadPlayers, playerName];
+      const alivePlayers = updatedPlayers.filter(p => p.status === 'alive');
+
+      const newGameState = alivePlayers.length === 0 ? GameState.ENDED : state.gameState;
+
+      return {
+        players: updatedPlayers,
+        deadPlayers: updatedDeadPlayers,
+        gameState: newGameState,
+        currentPlayerIndex: newGameState === GameState.ENDED ? 0 : state.currentPlayerIndex
+      };
+    }),
+
+  checkGameEnd: () => {
+    const state = get();
+    const alivePlayers = state.players.filter(p => p.status === 'alive');
+    if (alivePlayers.length === 0) {
+      set({ gameState: GameState.ENDED, currentPlayerIndex: 0 });
+    }
+  },
+
+  updateProgress: (updates) =>
+    set((state) => ({
+      progress: { ...state.progress, ...updates }
+    })),
+
+  subscribeToRoom: (roomId: string) => {
+    if (presenceChannel) {
+      presenceChannel.unsubscribe();
+      presenceChannel = null;
+    }
+
+    presenceChannel = supabase
+      .channel(`room:${roomId}`)
+      .on('presence', { event: 'sync' }, async () => {
+        const { data: sessions } = await supabase
+          .from('sessions')
+          .select('user_id')
+          .eq('room_id', roomId)
+          .eq('is_active', true);
+
+        const ids = sessions?.map((s) => s.user_id) || [];
+
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, username, avatar_url')
+          .in('id', ids);
+
+        const converted = profiles.map(p => ({
+          id: p.id,
+          username: p.username,
+          avatar: p.avatar_url,
+          oarWalletLinked: false,
+          status: 'alive'
+        }));
+
+        get().setPlayers(converted);
+      })
+      .subscribe();
+
+    return () => {
+      presenceChannel?.unsubscribe();
+    };
+  },
+
+  joinMatchmaking: async (genre: GameGenre) => {
+    const { currentUser } = get();
+    if (!currentUser) throw new Error('No user logged in');
+
+    const { data: existing } = await supabase
+      .from('waiting_pool')
+      .select()
+      .eq('user_id', currentUser.id)
+      .eq('status', 'waiting')
+      .maybeSingle();
+
+    if (existing) throw new Error('Already in matchmaking queue');
+
+    const { error } = await supabase
+      .from('waiting_pool')
+      .insert({
+        user_id: currentUser.id,
+        genre,
+        status: 'waiting'
+      });
+
+    if (error) throw error;
+  },
+
+  leaveMatchmaking: async () => {
+    const { currentUser } = get();
+    if (!currentUser) return;
+
+    await supabase
+      .from('waiting_pool')
+      .update({ status: 'left' })
+      .eq('user_id', currentUser.id)
+      .eq('status', 'waiting');
   }
-
-  return (
-    <div className="max-w-4xl mx-auto p-4">
-      <Card className="p-6" glowColor="amber">
-        <div className="text-center mb-6">
-          <h1 className="text-2xl font-mono font-bold text-amber-500 mb-1">
-            Game Lobby
-          </h1>
-          <p className="text-gray-400">
-            Waiting for players to join...
-          </p>
-        </div>
-
-        <div className="grid md:grid-cols-2 gap-6">
-          {/* Room info */}
-          <div className="space-y-4">
-            <div className="bg-gray-800 rounded-lg p-4">
-              <h2 className="text-lg font-mono font-semibold text-green-500 mb-2 flex items-center">
-                <Users size={18} className="mr-2" /> Room Details
-              </h2>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Room Code:</span>
-                  <span className="text-amber-500 font-mono font-bold">{currentRoom.code || 'N/A'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Genre:</span>
-                  <span className="text-white">{currentRoom.genreTag || 'Unknown'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Host:</span>
-                  <span className="text-white">{players.find(p => p.id === currentRoom.hostId)?.username || 'Unknown'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Players:</span>
-                  <span className="text-white">{players.length}/4</span>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <h2 className="text-lg font-mono font-semibold text-green-500 mb-2 flex items-center">
-                <UserPlus size={18} className="mr-2" /> Invite Players
-              </h2>
-              <div className="bg-gray-800 rounded-lg p-4 mb-4">
-                <p className="text-sm text-gray-400 mb-2">
-                  Share this code with friends to join your game:
-                </p>
-                <div className="font-mono text-xl text-amber-500 font-bold text-center p-2 bg-gray-900 rounded border border-gray-700">
-                  {currentRoom.code || 'N/A'}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Button
-                  variant="primary"
-                  fullWidth
-                  icon={<Phone size={16} />}
-                  onClick={handleShare}
-                >
-                  Invite Friends
-                </Button>
-                {showShareSuccess && (
-                  <div className="text-center text-green-500 text-sm animate-fade-in">
-                    Invite link copied to clipboard!
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Players list */}
-          <div>
-            <h2 className="text-lg font-mono font-semibold text-green-500 mb-2 flex items-center">
-              <Users size={18} className="mr-2" /> Players ({players.length}/4)
-            </h2>
-            <div className="bg-gray-800 rounded-lg p-4 mb-4">
-              {players.map((player) => (
-                <div 
-                  key={player.id} 
-                  className="flex items-center gap-3 p-2 rounded mb-2 bg-gray-900"
-                >
-                  <img 
-                    src={player.avatar || ''} 
-                    alt={player.username || 'Player'} 
-                    className="w-8 h-8 rounded-full border border-green-500/50" 
-                  />
-                  <span className="font-mono">
-                    {player.username || 'Unknown'}
-                    {player.id === currentRoom.hostId && (
-                      <span className="text-amber-500 ml-2">(Host)</span>
-                    )}
-                  </span>
-                </div>
-              ))}
-
-              {players.length < 4 && (
-                <div className="text-gray-500 text-sm text-center p-2">
-                  Waiting for more players...
-                </div>
-              )}
-            </div>
-
-            {isHost && (
-              <div className="space-y-4">
-                <div className="bg-gray-800 rounded-lg p-4">
-                  <h3 className="font-mono text-sm font-semibold text-green-500 mb-2 flex items-center">
-                    <Clock size={16} className="mr-2" /> Game Settings
-                  </h3>
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-400">Game Genre:</span>
-                      <select 
-                        className="bg-gray-900 text-white border border-gray-700 rounded p-1 text-sm"
-                        defaultValue={currentRoom.genreTag || GameGenre.HORROR}
-                      >
-                        {Object.values(GameGenre).map((genre) => (
-                          <option key={genre} value={genre}>{genre}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-400">Game Mode:</span>
-                      <select 
-                        className="bg-gray-900 text-white border border-gray-700 rounded p-1 text-sm"
-                        value={currentRoom.gameMode || GameMode.FREE_TEXT}
-                        onChange={handleGameModeChange}
-                      >
-                        {Object.values(GameMode).map((mode) => (
-                          <option key={mode} value={mode}>
-                            {mode === GameMode.FREE_TEXT ? 'Free Text' : 'Multiple Choice'}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                <Button
-                  variant="primary"
-                  fullWidth
-                  icon={<Play size={16} />}
-                  onClick={handleStartGame}
-                  disabled={countdown !== null}
-                >
-                  {countdown !== null 
-                    ? `Starting in ${countdown}...` 
-                    : 'Start Adventure'}
-                </Button>
-              </div>
-            )}
-
-            {!isHost && (
-              <div className="text-center text-gray-400 font-mono mt-4">
-                Waiting for host to start the game...
-              </div>
-            )}
-          </div>
-        </div>
-      </Card>
-    </div>
-  );
-};
-
-export default LobbyScreen;
+}));
