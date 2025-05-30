@@ -99,7 +99,7 @@ const GameScreen: React.FC = () => {
 
   const handleMakeChoice = async (choice: string) => {
     const isCurrentPlayerDead = players[currentPlayerIndex]?.status === 'dead';
-    const isUserDead = currentUser?.username && players.find(p => p.username === currentUser.username)?.status === 'dead';
+    const isUserDead = currentUser?.id && players.find(p => p.id === currentUser.id)?.status === 'dead';
     if (loadingStory || !currentRoom || tempSegment || gameState === GameState.ENDED || isCurrentPlayerDead || isUserDead) {
       console.log('----Input Blocked----');
       console.log('isCurrentPlayerDead:', isCurrentPlayerDead);
@@ -130,7 +130,7 @@ const GameScreen: React.FC = () => {
       console.log('playerDied:', playerDied);
 
       if (playerDied) {
-        markPlayerDead(players[currentPlayerIndex].username);
+        markPlayerDead(players[currentPlayerIndex].id);
       }
       if (text.includes('[GAME_ENDED]')) {
         setGameState(GameState.ENDED);
