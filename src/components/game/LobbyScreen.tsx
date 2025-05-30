@@ -421,4 +421,8 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       .eq('status', 'waiting');
   }
 }));
+const LobbyScreen: React.FC = () => {
+  // ...
+};
+
 export default LobbyScreen;
