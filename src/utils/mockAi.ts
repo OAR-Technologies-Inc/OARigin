@@ -27,8 +27,13 @@ const checkForDeath = (response: string): boolean => {
   return deathPhrases.some(phrase => response.toLowerCase().includes(phrase));
 };
 
-const cleanResponse = (response: string): string => {
-  return response.replace(/\[PLAYER_DEATH\]/g, '').trim();
+const cleanResponse = (response: string, gameMode: string): string => {
+  let cleaned = response.replace(/\[PLAYER_DEATH\]/g, '').trim();
+  // Remove numbered options in Free Text mode
+  if (gameMode === 'free_text') {
+    cleaned = cleaned.replace(/\s*Choices:\s*\n?|\d+\.\s*.+\n?/g, '');
+  }
+  return cleaned;
 };
 
 const fetchWithRetry = async (url: string, options: RequestInit, retries: number = 3, timeout: number = 20000) => {
@@ -74,6 +79,7 @@ export const generateStoryBeginning = async (
     return getFallbackResponse();
   }
 
+  const gameMode = room.gameMode || 'free_text';
   const prompt = buildNarrationPrompt({
     genre: String(genre),
     players: players.map(p => p.username),
@@ -82,7 +88,7 @@ export const generateStoryBeginning = async (
     playerInput: '',
     deadPlayers: [],
     newPlayers: [],
-    gameMode: room.gameMode,
+    gameMode,
     tone: 'tense',
     playerRoles: {},
     storyPhase: 'opening',
@@ -90,9 +96,9 @@ export const generateStoryBeginning = async (
     inventory: [],
     turnCount: 0,
     progress: {},
-    responseFormat: room.gameMode === 'free_text'
-      ? 'narrative text without numbered options'
-      : 'narrative text followed by 3-5 numbered options'
+    responseFormat: gameMode === 'free_text'
+      ? 'narrative text without numbered options. Do not include choices or numbered lists.'
+      : 'narrative text followed by 3-5 numbered options in the format: Choices:\n1. Option\n2. Option'
   });
 
   try {
@@ -110,7 +116,7 @@ export const generateStoryBeginning = async (
       20000
     );
 
-    return cleanResponse(response.text);
+    return cleanResponse(response.text, gameMode);
   } catch (error: any) {
     console.error('Story beginning error:', {
       message: error.message,
@@ -162,8 +168,8 @@ export const generateStoryContinuation = async ({
     newPlayers,
     gameMode,
     responseFormat: gameMode === 'free_text'
-      ? 'narrative text without numbered options'
-      : 'narrative text followed by 3-5 numbered options'
+      ? 'narrative text without numbered options. Do not include choices or numbered lists.'
+      : 'narrative text followed by 3-5 numbered options in the format: Choices:\n1. Option\n2. Option'
   });
 
   try {
@@ -175,7 +181,7 @@ export const generateStoryContinuation = async ({
           Authorization: `Bearer ${supabaseKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ prompt, playerInput }),
+        body: JSON.stringify({ prompt, playerInput, gameMode }),
       },
       3,
       20000
@@ -183,7 +189,7 @@ export const generateStoryContinuation = async ({
 
     const aiResponse = response.text;
     return {
-      text: cleanResponse(aiResponse),
+      text: cleanResponse(aiResponse, gameMode),
       playerDied: checkForDeath(aiResponse)
     };
   } catch (error: any) {
@@ -193,6 +199,7 @@ export const generateStoryContinuation = async ({
       stack: error.stack,
       prompt,
       playerInput,
+      gameMode,
     });
     return {
       text: "The story pauses... [Connection error, please try again]",
