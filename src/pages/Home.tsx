@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, LogIn, UserCircle } from 'lucide-react';
 import Layout from '../components/layout/Layout';
@@ -8,30 +8,33 @@ import Input from '../components/ui/Input';
 import { useGameStore } from '../store';
 import { GameGenre } from '../types';
 import Logo from '../components/ui/Logo';
+import { supabase } from '../lib/supabase';
 
 const Home: React.FC = () => {
   const navigate = useNavigate();
-  const { 
-    currentUser, 
-    isAuthenticated, 
-    generateTempUser, 
-    createRoom, 
-    joinRoom 
+  const {
+    currentUser,
+    isAuthenticated,
+    generateTempUser,
+    createRoom,
+    joinRoom,
+    joinMatchmaking,
   } = useGameStore();
-  
+
   const [username, setUsername] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [isJoining, setIsJoining] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [selectedGenre, setSelectedGenre] = useState<GameGenre>(GameGenre.FANTASY);
   const [isPublic, setIsPublic] = useState(false);
-  
+  const [joiningMatchmaking, setJoiningMatchmaking] = useState(false);
+
   const handleCreateRoom = async () => {
     if (!isAuthenticated) {
       if (!username.trim()) return;
       generateTempUser(username);
     }
-    
+
     try {
       setIsCreating(true);
       await createRoom(selectedGenre, isPublic);
@@ -42,15 +45,15 @@ const Home: React.FC = () => {
       setIsCreating(false);
     }
   };
-  
+
   const handleJoinRoom = async () => {
     if (!roomCode.trim()) return;
-    
+
     if (!isAuthenticated) {
       if (!username.trim()) return;
       generateTempUser(username);
     }
-    
+
     try {
       setIsJoining(true);
       await joinRoom(currentUser?.id || '', roomCode);
@@ -61,7 +64,63 @@ const Home: React.FC = () => {
       setIsJoining(false);
     }
   };
-  
+
+  const handleJoinMatchmaking = async () => {
+    if (!isAuthenticated) {
+      if (!username.trim()) return;
+      generateTempUser(username);
+    }
+
+    try {
+      setJoiningMatchmaking(true);
+      await joinMatchmaking(selectedGenre);
+    } catch (error) {
+      console.error('Matchmaking failed:', error);
+      setJoiningMatchmaking(false);
+    }
+  };
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    const checkMatchStatus = async () => {
+      const { currentUser, joinRoom } = useGameStore.getState();
+      if (!currentUser) return;
+
+      const { data: waitEntry } = await supabase
+        .from('waiting_pool')
+        .select('status')
+        .eq('user_id', currentUser.id)
+        .maybeSingle();
+
+      if (!waitEntry || waitEntry.status !== 'matched') return;
+
+      const { data: session } = await supabase
+        .from('sessions')
+        .select('room_id')
+        .eq('user_id', currentUser.id)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (!session) return;
+
+      clearInterval(interval);
+
+      try {
+        await joinRoom(currentUser.id, session.room_id);
+        navigate('/lobby');
+      } catch (err) {
+        console.error('Failed to auto-join matched room:', err);
+      }
+    };
+
+    const { currentUser } = useGameStore.getState();
+    if (currentUser) {
+      interval = setInterval(checkMatchStatus, 2000);
+    }
+
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <Layout>
       <div className="min-h-screen flex items-center justify-center p-4">
@@ -75,14 +134,14 @@ const Home: React.FC = () => {
               Embark on a cooperative text adventure with friends
             </p>
           </div>
-          
+
           <div className="grid md:grid-cols-2 gap-6">
             <Card className="p-8">
               <h2 className="text-xl font-mono font-bold text-green-500 mb-4 flex items-center">
                 <Plus size={18} className="mr-2" />
                 Create New Adventure
               </h2>
-              
+
               <div className="space-y-6">
                 {!isAuthenticated && (
                   <Input
@@ -93,7 +152,7 @@ const Home: React.FC = () => {
                     fullWidth
                   />
                 )}
-                
+
                 <div>
                   <label className="block text-green-500 font-mono text-sm mb-1">
                     Select Genre
@@ -121,7 +180,7 @@ const Home: React.FC = () => {
                     Public Room (Allow Matchmaking)
                   </label>
                 </div>
-                
+
                 <Button
                   variant="primary"
                   fullWidth
@@ -131,19 +190,29 @@ const Home: React.FC = () => {
                 >
                   Create Room
                 </Button>
-                
+
+                <Button
+                  variant="secondary"
+                  fullWidth
+                  onClick={handleJoinMatchmaking}
+                  isLoading={joiningMatchmaking}
+                  disabled={!isAuthenticated && !username.trim()}
+                >
+                  Join Matchmaking
+                </Button>
+
                 <div className="text-sm text-gray-400">
-                  Create a new adventure and invite friends to join you.
+                  Create or join a public game to find teammates automatically.
                 </div>
               </div>
             </Card>
-            
+
             <Card className="p-8">
               <h2 className="text-xl font-mono font-bold text-green-500 mb-4 flex items-center">
                 <LogIn size={18} className="mr-2" />
                 Join Existing Adventure
               </h2>
-              
+
               <div className="space-y-6">
                 {!isAuthenticated && (
                   <Input
@@ -154,7 +223,7 @@ const Home: React.FC = () => {
                     fullWidth
                   />
                 )}
-                
+
                 <Input
                   label="Room Code"
                   placeholder="Enter room code"
@@ -162,7 +231,7 @@ const Home: React.FC = () => {
                   onChange={(e) => setRoomCode(e.target.value)}
                   fullWidth
                 />
-                
+
                 <Button
                   variant="secondary"
                   fullWidth
@@ -172,7 +241,7 @@ const Home: React.FC = () => {
                 >
                   Join Room
                 </Button>
-                
+
                 <div className="text-sm text-gray-400">
                   Enter a room code to join an existing adventure.
                 </div>
