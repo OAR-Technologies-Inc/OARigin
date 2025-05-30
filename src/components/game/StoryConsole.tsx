@@ -1,3 +1,9 @@
+console.log('----INPUT CHECK----');
+console.log('isProcessing:', isProcessing);
+console.log('animationDone:', animationDone);
+console.log('currentPlayer:', currentPlayer);
+console.log('gameMode:', currentRoom?.gameMode);
+console.log('expected:', GameMode.FREE_TEXT);
 import React, { useState, useEffect } from 'react';
 import { Send } from 'lucide-react';
 import Terminal from '../ui/Terminal';
