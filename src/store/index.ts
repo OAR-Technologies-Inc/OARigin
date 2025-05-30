@@ -360,30 +360,32 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   },
 
   joinMatchmaking: async (genre: GameGenre) => {
-    const { currentUser } = get();
-    if (!currentUser) throw new Error('No user logged in');
+  const { currentUser } = get();
+  if (!currentUser) throw new Error('No user logged in');
 
-    const { data: existing } = await supabase
-      .from('waiting_pool')
-      .select()
-      .eq('user_id', currentUser.id)
-      .eq('status', 'waiting')
-      .single();
+  const { data: existing } = await supabase
+    .from('waiting_pool')
+    .select()
+    .eq('user_id', currentUser.id)
+    .in('status', ['waiting', 'matched'])
+    .limit(1);
 
-    if (existing) {
-      throw new Error('Already in matchmaking queue');
-    }
+  if (existing && existing.length > 0) {
+    console.warn('User already in matchmaking queue');
+    return; // silently return instead of throwing
+  }
 
-    const { error } = await supabase
-      .from('waiting_pool')
-      .insert({
-        user_id: currentUser.id,
-        genre,
-        status: 'waiting'
-      });
+  const { error } = await supabase
+    .from('waiting_pool')
+    .insert({
+      user_id: currentUser.id,
+      genre,
+      status: 'waiting'
+    });
 
-    if (error) throw error;
-  },
+  if (error) throw error;
+}
+
 
   leaveMatchmaking: async () => {
     const { currentUser } = get();
