@@ -129,7 +129,7 @@ const LobbyScreen: React.FC = () => {
                 key={player.id}
                 className="text-green-500 font-mono text-sm"
               >
-                > {player.username || 'Unknown'}
+                &gt; {player.username || 'Unknown'}
                 {player.id === currentRoom.hostId && (
                   <span className="text-amber-500"> (Host)</span>
                 )}
@@ -151,7 +151,7 @@ const LobbyScreen: React.FC = () => {
             </h2>
             <div className="border border-green-500 p-2 mb-4">
               <div className="flex justify-between items-center mb-2">
-                <span className="text-green-500 font-mono text-sm">> Genre:</span>
+                <span className="text-green-500 font-mono text-sm">&gt; Genre:</span>
                 <select
                   className="bg-black text-green-500 border border-green-500 font-mono text-sm p-1"
                   value={currentRoom.genreTag || GameGenre.HORROR}
@@ -168,7 +168,7 @@ const LobbyScreen: React.FC = () => {
                 </select>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-green-500 font-mono text-sm">> Mode:</span>
+                <span className="text-green-500 font-mono text-sm">&gt; Mode:</span>
                 <select
                   className="bg-black text-green-500 border border-green-500 font-mono text-sm p-1"
                   value={currentRoom.gameMode || GameMode.FREE_TEXT}
