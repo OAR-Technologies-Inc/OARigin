@@ -4,7 +4,7 @@ import { Clock, UserPlus, Play, Users, Phone } from 'lucide-react';
 import { useGameStore } from '../../store';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
-import { GameGenre, GameMode } from '../../types';
+import { GameGenre, GameMode, GameState } from '../../types';
 import { supabase } from '../../lib/supabase';
 
 const LobbyScreen: React.FC = () => {
