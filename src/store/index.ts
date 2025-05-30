@@ -29,7 +29,7 @@ interface GameStore {
   setLoadingStory: (loading: boolean) => void;
   setPresenceChannel: (channel: RealtimeChannel) => void;
   startGame: () => void;
-  markPlayerDead: (userId: string) => void;
+  markPlayerDead: (username: string) => void;
   setProgress: (progress: GameProgress) => void;
   updateProgress: (progress: Partial<GameProgress>) => void;
   nextPlayerTurn: () => void;
@@ -76,8 +76,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
     progress: {}
   })),
 
-  markPlayerDead: (userId) => set((state) => ({
-    deadPlayers: [...state.deadPlayers, userId]
+  markPlayerDead: (username) => set((state) => ({
+    deadPlayers: [...state.deadPlayers, username],
+    players: state.players.map(p => 
+      p.username === username ? { ...p, status: 'dead' } : p
+    )
   })),
 
   setProgress: (progress) => set({ progress }),
@@ -91,7 +94,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   })),
 
   checkGameEnd: () => set((state) => {
-    const allDead = state.players.every(p => state.deadPlayers.includes(p.id));
+    const allDead = state.players.every(p => state.deadPlayers.includes(p.username));
     if (allDead) {
       return { gameState: GameState.ENDED };
     }
