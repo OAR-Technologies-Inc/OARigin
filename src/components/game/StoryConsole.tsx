@@ -1,9 +1,3 @@
-console.log('----INPUT CHECK----');
-console.log('isProcessing:', isProcessing);
-console.log('animationDone:', animationDone);
-console.log('currentPlayer:', currentPlayer);
-console.log('gameMode:', currentRoom?.gameMode);
-console.log('expected:', GameMode.FREE_TEXT);
 import React, { useState, useEffect } from 'react';
 import { Send } from 'lucide-react';
 import Terminal from '../ui/Terminal';
@@ -104,7 +98,12 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
     if (gameState === GameState.ENDED) return <span className="text-amber-500">Story Complete</span>;
     return "What do you do?";
   };
-
+console.log('----INPUT CHECK----');
+console.log('isProcessing:', isProcessing);
+console.log('animationDone:', animationDone);
+console.log('currentPlayer:', currentPlayer);
+console.log('gameMode:', currentRoom?.gameMode);
+console.log('expected:', GameMode.FREE_TEXT);
   return (
     <div className="flex flex-col h-full">
       <div className="flex-grow overflow-hidden relative mb-4">
