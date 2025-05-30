@@ -2,11 +2,11 @@ import { buildNarrationPrompt } from '../utils/promptBuilder';
 import { User, Room, GameGenre } from '../types';
 
 const fallbackResponses = [
-  "The story takes an unexpected turn as ancient magic interferes with the narrative... [Retry or check connection]",
-  "A mysterious force temporarily obscures the path forward... [Retry or check connection]",
-  "The threads of fate become tangled, making the next chapter unclear... [Retry or check connection]",
-  "Time seems to pause as the universe contemplates the next development... [Retry or check connection]",
-  "The story's progression is momentarily shrouded in mystical energy... [Retry or check connection]"
+  "The story takes an unexpected turn as ancient magic interferes... [Retry or check connection]",
+  "A mysterious force obscures the path forward... [Retry or check connection]",
+  "The threads of fate tangle, pausing the narrative... [Retry or check connection]",
+  "Time pauses as the universe reconsiders the tale... [Retry or check connection]",
+  "Mystical energy shrouds the story's progression... [Retry or check connection]"
 ];
 
 const getFallbackResponse = () => {
@@ -31,7 +31,7 @@ const cleanResponse = (response: string): string => {
   return response.replace(/\[PLAYER_DEATH\]/g, '').trim();
 };
 
-const fetchWithRetry = async (url: string, options: RequestInit, retries: number = 2, timeout: number = 15000) => {
+const fetchWithRetry = async (url: string, options: RequestInit, retries: number = 3, timeout: number = 20000) => {
   for (let attempt = 1; attempt <= retries; attempt++) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -48,7 +48,11 @@ const fetchWithRetry = async (url: string, options: RequestInit, retries: number
       return await response.json();
     } catch (error: any) {
       clearTimeout(timeoutId);
-      console.error(`Attempt ${attempt} failed:`, error);
+      console.error(`Attempt ${attempt} failed:`, {
+        message: error.message,
+        name: error.name,
+        stack: error.stack,
+      });
       if (attempt === retries || error.name !== 'AbortError') {
         throw error;
       }
@@ -86,6 +90,9 @@ export const generateStoryBeginning = async (
     inventory: [],
     turnCount: 0,
     progress: {},
+    responseFormat: room.gameMode === 'free_text'
+      ? 'narrative text without numbered options'
+      : 'narrative text followed by 3-5 numbered options'
   });
 
   try {
@@ -99,8 +106,8 @@ export const generateStoryBeginning = async (
         },
         body: JSON.stringify({ prompt }),
       },
-      2,
-      15000
+      3,
+      20000
     );
 
     return cleanResponse(response.text);
@@ -109,6 +116,7 @@ export const generateStoryBeginning = async (
       message: error.message,
       name: error.name,
       stack: error.stack,
+      prompt,
     });
     return getFallbackResponse();
   }
@@ -152,7 +160,10 @@ export const generateStoryContinuation = async ({
     playerInput,
     deadPlayers,
     newPlayers,
-    gameMode
+    gameMode,
+    responseFormat: gameMode === 'free_text'
+      ? 'narrative text without numbered options'
+      : 'narrative text followed by 3-5 numbered options'
   });
 
   try {
@@ -164,10 +175,10 @@ export const generateStoryContinuation = async ({
           Authorization: `Bearer ${supabaseKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ prompt, playerInput }),
       },
-      2,
-      15000
+      3,
+      20000
     );
 
     const aiResponse = response.text;
@@ -180,15 +191,11 @@ export const generateStoryContinuation = async ({
       message: error.message,
       name: error.name,
       stack: error.stack,
+      prompt,
+      playerInput,
     });
-    if (error.name === 'AbortError') {
-      return {
-        text: "The mystical forces require more time to weave the next chapter... [Connection timeout]",
-        playerDied: false
-      };
-    }
     return {
-      text: getFallbackResponse(),
+      text: "The story pauses... [Connection error, please try again]",
       playerDied: false
     };
   }
