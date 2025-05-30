@@ -36,6 +36,16 @@ const GameScreen: React.FC = () => {
   const [animationComplete, setAnimationComplete] = useState(false);
   const hasStartedRef = useRef(false);
 
+  // Debug store state
+  useEffect(() => {
+    console.log('----GameScreen Store Check----');
+    console.log('currentRoom:', currentRoom);
+    console.log('gameMode:', currentRoom?.gameMode);
+    console.log('players:', players);
+    console.log('currentPlayerIndex:', currentPlayerIndex);
+    console.log('nextPlayerTurn:', nextPlayerTurn);
+  }, [currentRoom, players, currentPlayerIndex, nextPlayerTurn]);
+
   useEffect(() => {
     if (!currentRoom) navigate('/');
   }, [currentRoom, navigate]);
@@ -66,6 +76,7 @@ const GameScreen: React.FC = () => {
           setTempSegment(newSegment);
           setAnimationComplete(false);
         } catch (error) {
+          console.error('Initialize story error:', error);
           const fallback: StorySegment = {
             id: uuidv4(),
             roomId: currentRoom.id,
@@ -83,7 +94,7 @@ const GameScreen: React.FC = () => {
     };
 
     initializeStory();
-  }, [currentRoom, storySegments, loadingStory, players]);
+  }, [currentRoom, storySegments, loadingStory, players, setLoadingStory]);
 
   const handleMakeChoice = async (choice: string) => {
     const isCurrentPlayerDead = players[currentPlayerIndex]?.status === 'dead';
@@ -124,9 +135,20 @@ const GameScreen: React.FC = () => {
 
       setTempSegment(newSegment);
       setAnimationComplete(false);
-      nextPlayerTurn();
+
+      // Fallback nextPlayerTurn logic
+      if (typeof nextPlayerTurn === 'function') {
+        nextPlayerTurn();
+      } else {
+        console.warn('nextPlayerTurn is not a function, using fallback');
+        useGameStore.setState({
+          currentPlayerIndex: (currentPlayerIndex + 1) % players.length,
+        });
+      }
+
       checkGameEnd();
     } catch (error) {
+      console.error('Handle choice error:', error);
       const fallback: StorySegment = {
         id: uuidv4(),
         roomId: currentRoom.id,
@@ -137,7 +159,15 @@ const GameScreen: React.FC = () => {
         createdAt: new Date().toISOString(),
       };
       setTempSegment(fallback);
-      nextPlayerTurn();
+      // Fallback nextPlayerTurn logic for error case
+      if (typeof nextPlayerTurn === 'function') {
+        nextPlayerTurn();
+      } else {
+        console.warn('nextPlayerTurn is not a function, using fallback');
+        useGameStore.setState({
+          currentPlayerIndex: (currentPlayerIndex + 1) % players.length,
+        });
+      }
       checkGameEnd();
     } finally {
       setLoadingStory(false);
