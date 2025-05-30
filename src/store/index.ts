@@ -32,6 +32,7 @@ interface GameStore {
   setProgress: (progress: GameProgress) => void;
   joinMatchmaking: (genre: GameGenre) => Promise<void>;
   leaveMatchmaking: () => Promise<void>;
+  createRoom: (genre: GameGenre, gameMode: GameMode) => Promise<void>;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -110,6 +111,31 @@ export const useGameStore = create<GameStore>((set, get) => ({
       .update({ status: 'left' })
       .eq('user_id', currentUser.id)
       .eq('status', 'waiting');
+  },
+
+  createRoom: async (genre: GameGenre, gameMode: GameMode) => {
+    const { currentUser } = get();
+    if (!currentUser) throw new Error('No user logged in');
+
+    const roomId = uuidv4();
+    const room: Room = {
+      id: roomId,
+      host_id: currentUser.id,
+      genre,
+      gameMode,
+      status: RoomStatus.LOBBY,
+      players: [currentUser.id]
+    };
+
+    set({
+      currentRoom: room,
+      players: [currentUser],
+      gameState: GameState.LOBBY,
+      storySegments: [],
+      currentVotes: [],
+      currentPlayerIndex: 0,
+      deadPlayers: [],
+      progress: {}
+    });
   }
 }));
-
