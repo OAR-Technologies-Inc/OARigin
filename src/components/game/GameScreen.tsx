@@ -94,7 +94,7 @@ const GameScreen: React.FC = () => {
     try {
       const deadPlayers = players.filter(p => p.status === 'dead').map(p => p.username);
       const { text, playerDied } = await generateStoryContinuation({
-        genre: currentRoom.genreTag,
+        genre: String(currentRoom.genreTag),
         players: players.map(p => p.username),
         storyLog: storySegments.map(s => s.aiResponse || s.content).filter(Boolean),
         currentPlayer: players[currentPlayerIndex].username,
