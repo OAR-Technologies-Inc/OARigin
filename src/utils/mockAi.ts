@@ -29,7 +29,6 @@ const checkForDeath = (response: string): boolean => {
 
 const cleanResponse = (response: string, gameMode: string): string => {
   let cleaned = response.replace(/\[PLAYER_DEATH\]/g, '').trim();
-  // Remove numbered options in Free Text mode
   if (gameMode === 'free_text') {
     cleaned = cleaned.replace(/\s*Choices:\s*\n?|\d+\.\s*.+\n?/g, '');
   }
@@ -187,7 +186,11 @@ export const generateStoryContinuation = async ({
       20000
     );
 
-    const aiResponse = response.text;
+    const aiResponse = response.text || '';
+    console.log('----Story Continuation Raw Response----');
+    console.log('response:', response);
+    console.log('aiResponse:', aiResponse);
+
     return {
       text: cleanResponse(aiResponse, gameMode),
       playerDied: checkForDeath(aiResponse)
