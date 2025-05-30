@@ -6,7 +6,7 @@ import StoryConsole from './StoryConsole';
 import ChatSidebar from './ChatSidebar';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
-import { StorySegment, GameState, GameProgress } from '../../types';
+import { StorySegment, GameState, GameProgress, GameMode } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
 import { generateStoryBeginning, generateStoryContinuation } from '../../utils/mockAi';
 
@@ -24,10 +24,11 @@ const GameScreen: React.FC = () => {
     setLoadingStory,
     nextPlayerTurn,
     clearNewPlayers,
-    setPlayerDeath,
+    markPlayerDead,
     updateProgress,
     setGameState,
     progress,
+    currentUser,
   } = useGameStore();
 
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -43,7 +44,8 @@ const GameScreen: React.FC = () => {
     console.log('genreTag:', currentRoom?.genreTag);
     console.log('players:', players);
     console.log('currentPlayerIndex:', currentPlayerIndex);
-  }, [currentRoom, players, currentPlayerIndex]);
+    console.log('currentUser:', currentUser);
+  }, [currentRoom, players, currentPlayerIndex, currentUser]);
 
   useEffect(() => {
     if (!currentRoom) navigate('/');
@@ -97,7 +99,13 @@ const GameScreen: React.FC = () => {
 
   const handleMakeChoice = async (choice: string) => {
     const isCurrentPlayerDead = players[currentPlayerIndex]?.status === 'dead';
-    if (loadingStory || !currentRoom || tempSegment || gameState === GameState.ENDED || isCurrentPlayerDead) return;
+    const isUserDead = currentUser?.username && players.find(p => p.username === currentUser.username)?.status === 'dead';
+    if (loadingStory || !currentRoom || tempSegment || gameState === GameState.ENDED || isCurrentPlayerDead || isUserDead) {
+      console.log('----Input Blocked----');
+      console.log('isCurrentPlayerDead:', isCurrentPlayerDead);
+      console.log('isUserDead:', isUserDead);
+      return;
+    }
 
     setLoadingStory(true);
 
@@ -111,7 +119,7 @@ const GameScreen: React.FC = () => {
         playerInput: choice,
         deadPlayers,
         newPlayers: [],
-        gameMode: currentRoom.gameMode,
+        gameMode: currentRoom.gameMode || GameMode.FREE_TEXT,
       });
 
       const text = result?.text || '';
@@ -121,7 +129,9 @@ const GameScreen: React.FC = () => {
       console.log('text:', text);
       console.log('playerDied:', playerDied);
 
-      if (playerDied) setPlayerDeath(players[currentPlayerIndex].username);
+      if (playerDied) {
+        markPlayerDead(players[currentPlayerIndex].username);
+      }
       if (text.includes('[GAME_ENDED]')) {
         setGameState(GameState.ENDED);
       }
