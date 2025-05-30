@@ -30,15 +30,31 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
   isCurrentPlayerDead,
   gameState,
 }) => {
-  const { currentRoom } = useGameStore();
+  const { currentRoom, players } = useGameStore();
+
   const [freestyleInput, setFreestyleInput] = useState('');
   const [animationDone, setAnimationDone] = useState(false);
+  const [isPlayerDead, setIsPlayerDead] = useState(false);
 
   useEffect(() => {
-    if (isCurrentPlayerDead || gameState === GameState.ENDED) {
+    const checkPlayerStatus = async () => {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (error || !session) {
+        setIsPlayerDead(false);
+        return;
+      }
+      const userId = session.user.id;
+      const player = players.find(p => p.id === userId);
+      setIsPlayerDead(player?.status === 'dead');
+    };
+    checkPlayerStatus();
+  }, [players]);
+
+  useEffect(() => {
+    if (isPlayerDead || isCurrentPlayerDead || gameState === GameState.ENDED) {
       setFreestyleInput('');
     }
-  }, [isCurrentPlayerDead, gameState]);
+  }, [isPlayerDead, isCurrentPlayerDead, gameState]);
 
   const getDisplayedLines = (): string[] => {
     const lines: string[] = [];
@@ -54,7 +70,7 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
   const getActiveLine = (): string => tempSegment?.aiResponse || '';
 
   const handleFreestyleSubmit = () => {
-    if (freestyleInput.trim() && !isProcessing && !isCurrentPlayerDead && gameState !== GameState.ENDED) {
+    if (freestyleInput.trim() && !isProcessing && !isPlayerDead && !isCurrentPlayerDead && gameState !== GameState.ENDED) {
       const profaneWords = ['fuck', 'shit', 'damn', 'asshole', 'bitch', 'cunt', 'bastard'];
       if (profaneWords.some(word => freestyleInput.toLowerCase().includes(word))) {
         alert('Please avoid using inappropriate language.');
@@ -66,19 +82,19 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
   };
 
   const handleOptionSelect = (option: string) => {
-    if (!isProcessing && !isCurrentPlayerDead && gameState !== GameState.ENDED) {
+    if (!isProcessing && !isPlayerDead && !isCurrentPlayerDead && gameState !== GameState.ENDED) {
       onMakeChoice(option);
     }
   };
 
   const getInputPlaceholder = () => {
-    if (isCurrentPlayerDead) return "You have died and can no longer act";
+    if (isPlayerDead || isCurrentPlayerDead) return "You have died and can no longer act";
     if (gameState === GameState.ENDED) return "Game Over - Story has concluded";
     return "Enter your action or response...";
   };
 
   const getStatusMessage = () => {
-    if (isCurrentPlayerDead) return <span className="text-red-500">You have died</span>;
+    if (isPlayerDead || isCurrentPlayerDead) return <span className="text-red-500">You have died</span>;
     if (gameState === GameState.ENDED) return <span className="text-amber-500">Story Complete</span>;
     return "What do you do?";
   };
@@ -114,20 +130,20 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
           <TextArea
             placeholder={getInputPlaceholder()}
             value={freestyleInput}
-            onChange={(e) => !isCurrentPlayerDead && gameState !== GameState.ENDED && setFreestyleInput(e.target.value)}
-            disabled={isCurrentPlayerDead || gameState === GameState.ENDED}
+            onChange={(e) => !isPlayerDead && gameState !== GameState.ENDED && setFreestyleInput(e.target.value)}
+            disabled={isPlayerDead || isCurrentPlayerDead || gameState === GameState.ENDED}
             fullWidth
-            className={`min-h-[80px] text-sm md:text-base ${(isCurrentPlayerDead || gameState === GameState.ENDED) ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={`min-h-[80px] text-sm md:text-base ${(isPlayerDead || isCurrentPlayerDead || gameState === GameState.ENDED) ? 'opacity-50 cursor-not-allowed' : ''}`}
           />
           <Button
-            variant={(isCurrentPlayerDead || gameState === GameState.ENDED) ? "danger" : "primary"}
+            variant={(isPlayerDead || isCurrentPlayerDead || gameState === GameState.ENDED) ? "danger" : "primary"}
             onClick={handleFreestyleSubmit}
-            disabled={!freestyleInput.trim() || isCurrentPlayerDead || gameState === GameState.ENDED}
+            disabled={!freestyleInput.trim() || isPlayerDead || isCurrentPlayerDead || gameState === GameState.ENDED}
             icon={<Send size={16} />}
             fullWidth
-            className={`mt-2 ${(isCurrentPlayerDead || gameState === GameState.ENDED) ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={`mt-2 ${(isPlayerDead || isCurrentPlayerDead || gameState === GameState.ENDED) ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
-            {(isCurrentPlayerDead || gameState === GameState.ENDED) ? "Cannot Submit" : "Submit Move"}
+            {(isPlayerDead || isCurrentPlayerDead || gameState === GameState.ENDED) ? "Cannot Submit" : "Submit Move"}
           </Button>
         </div>
       )}
@@ -141,17 +157,17 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
             {tempSegment?.aiResponse ? extractOptions(tempSegment.aiResponse).map((option, index) => (
               <Button
                 key={index}
-                variant={(isCurrentPlayerDead || gameState === GameState.ENDED) ? "danger" : "secondary"}
+                variant={(isPlayerDead || isCurrentPlayerDead || gameState === GameState.ENDED) ? "danger" : "secondary"}
                 onClick={() => handleOptionSelect(option)}
-                disabled={isCurrentPlayerDead || gameState === GameState.ENDED}
+                disabled={isPlayerDead || isCurrentPlayerDead || gameState === GameState.ENDED}
                 fullWidth
-                className={`text-sm md:text-base ${(isCurrentPlayerDead || gameState === GameState.ENDED) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                className={`text-sm md:text-base ${(isPlayerDead || isCurrentPlayerDead || gameState === GameState.ENDED) ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 {option}
               </Button>
             )) : (
               <div className="text-gray-500 text-sm text-center">
-                {isCurrentPlayerDead ? 'You have died' : gameState === GameState.ENDED ? 'Story has concluded' : 'Waiting for options...'}
+                {isPlayerDead || isCurrentPlayerDead ? 'You have died' : gameState === GameState.ENDED ? 'Story has concluded' : 'Waiting for options...'}
               </div>
             )}
           </div>
@@ -172,3 +188,4 @@ const extractOptions = (aiResponse: string): string[] => {
 };
 
 export default StoryConsole;
+
