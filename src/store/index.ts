@@ -31,6 +31,8 @@ interface GameStore {
   startGame: () => void;
   markPlayerDead: (userId: string) => void;
   setProgress: (progress: GameProgress) => void;
+  nextPlayerTurn: () => void;
+  checkGameEnd: () => void;
   joinMatchmaking: (genre: GameGenre) => Promise<void>;
   leaveMatchmaking: () => Promise<void>;
   createRoom: (genre: GameGenre, isPublic: boolean) => Promise<void>;
@@ -78,6 +80,18 @@ export const useGameStore = create<GameStore>((set, get) => ({
   })),
 
   setProgress: (progress) => set({ progress }),
+
+  nextPlayerTurn: () => set((state) => ({
+    currentPlayerIndex: (state.currentPlayerIndex + 1) % state.players.length,
+  })),
+
+  checkGameEnd: () => set((state) => {
+    const allDead = state.players.every(p => state.deadPlayers.includes(p.id));
+    if (allDead) {
+      return { gameState: GameState.ENDED };
+    }
+    return state;
+  }),
 
   joinMatchmaking: async (genre: GameGenre) => {
     const { currentUser } = get();
@@ -132,7 +146,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         status: RoomStatus.LOBBY,
         host_id: currentUser.id,
         is_public: isPublic,
-        game_mode: 'free_text' // Set as string to match DB values
+        game_mode: 'free_text'
       })
       .select()
       .single();
