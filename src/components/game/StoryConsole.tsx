@@ -186,4 +186,3 @@ const extractOptions = (aiResponse: string): string[] => {
 };
 
 export default StoryConsole;
-
