@@ -11,7 +11,6 @@ const corsHeaders = {
 };
 
 Deno.serve(async (req: Request) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, {
       status: 200,
@@ -24,20 +23,25 @@ Deno.serve(async (req: Request) => {
       throw new Error('Method not allowed');
     }
 
-    const { prompt } = await req.json();
+    const { prompt, gameMode } = await req.json();
 
     if (!prompt) {
       throw new Error('Prompt is required');
     }
 
-    console.log('Received prompt:', prompt); // Debug log for prompt
+    console.log('Received prompt:', prompt);
+    console.log('Game mode:', gameMode);
+
+    const systemPrompt = gameMode === 'free_text'
+      ? 'You are a cooperative AI storyteller. Create engaging, real-time story scenes based on player choices. Respond with narrative text only, without numbered options or choices.'
+      : 'You are a cooperative AI storyteller. Create engaging, real-time story scenes based on player choices. Respond with narrative text followed by 3-5 numbered options in the format: Choices:\n1. Option\n2. Option';
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4',
       messages: [
         {
           role: 'system',
-          content: 'You are a cooperative AI storyteller. Create engaging, real-time story scenes based on player choices.',
+          content: systemPrompt,
         },
         {
           role: 'user',
@@ -49,7 +53,7 @@ Deno.serve(async (req: Request) => {
     });
 
     const text = completion.choices[0]?.message?.content || '';
-    console.log('AI response:', text); // Debug log for response
+    console.log('AI response:', text);
 
     return new Response(
       JSON.stringify({ text }),
