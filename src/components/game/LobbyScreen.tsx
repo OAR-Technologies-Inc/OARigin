@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Clock, Copy, Play, Users } from 'lucide-react';
 import { useGameStore } from '../../store';
@@ -12,10 +12,21 @@ const LobbyScreen: React.FC = () => {
   const [countdown, setCountdown] = useState<number | null>(null);
   const [showShareSuccess, setShowShareSuccess] = useState(false);
 
+  // Debug data to diagnose issues (remove after testing)
+  useEffect(() => {
+    console.log('LobbyScreen Data:', { currentRoom, players, isHost });
+  }, [currentRoom, players, isHost]);
+
   const handleGameModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (!isHost || !currentRoom) return;
     const newGameMode = e.target.value as GameMode;
     setRoom({ ...currentRoom, gameMode: newGameMode });
+  };
+
+  const handleGenreChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (!isHost || !currentRoom) return;
+    const newGenre = e.target.value as GameGenre;
+    setRoom({ ...currentRoom, genreTag: newGenre });
   };
 
   const handleStartGame = () => {
@@ -63,10 +74,12 @@ const LobbyScreen: React.FC = () => {
     );
   }
 
-  const hostPlayer = players.find(p => p.id === currentRoom.hostId);
+  // Prepare room data with safe access
   const roomCode = currentRoom.code || 'N/A';
-  const genre = currentRoom.genreTag || 'Unknown';
+  const genre = currentRoom.genreTag || GameGenre.HORROR;
+  const hostPlayer = players.find(p => p.id === currentRoom.hostId);
   const hostName = hostPlayer?.username || 'Unknown';
+  const playerCount = players.length;
 
   return (
     <div className="flex justify-center items-center min-h-screen bg-black">
@@ -82,10 +95,10 @@ const LobbyScreen: React.FC = () => {
           <div className="border border-green-500 p-2">
             <pre className="text-green-500 font-mono text-sm">
               +---------------- Room Status ----------------+
-              | Code: {(roomCode).padEnd(32, ' ')} |
-              | Genre: {(genre).padEnd(31, ' ')} |
-              | Host: {(hostName).padEnd(32, ' ')} |
-              | Players: {players.length}/4{''.padEnd(28, ' ')} |
+              | Code: {roomCode.padEnd(32, ' ')} |
+              | Genre: {genre.padEnd(31, ' ')} |
+              | Host: {hostName.padEnd(32, ' ')} |
+              | Players: {playerCount}/4{''.padEnd(28, ' ')} |
               +--------------------------------------------+
             </pre>
           </div>
@@ -135,7 +148,7 @@ const LobbyScreen: React.FC = () => {
                 )}
               </p>
             ))}
-            {players.length < 4 && (
+            {playerCount < 4 && (
               <p className="text-green-500 font-mono text-sm text-center">
                 Awaiting Crew...
               </p>
@@ -144,61 +157,60 @@ const LobbyScreen: React.FC = () => {
         </div>
 
         {/* Host Controls */}
-        {isHost ? (
-          <div>
-            <h2 className="text-green-500 font-mono text-lg mb-2 flex items-center">
-              <Clock size={16} className="mr-2" /> Configure Mission
-            </h2>
-            <div className="border border-green-500 p-2 mb-4">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-green-500 font-mono text-sm">&gt; Genre:</span>
-                <select
-                  className="bg-black text-green-500 border border-green-500 font-mono text-sm p-1"
-                  value={currentRoom.genreTag || GameGenre.HORROR}
-                  onChange={(e) => {
-                    if (!isHost || !currentRoom) return;
-                    setRoom({ ...currentRoom, genreTag: e.target.value as GameGenre });
-                  }}
-                >
-                  {Object.values(GameGenre).map((genre) => (
-                    <option key={genre} value={genre} className="bg-black">
-                      {genre}
-                    </option>
-                  ))}
-                </select>
+        <div>
+          <h2 className="text-green-500 font-mono text-lg mb-2 flex items-center">
+            <Clock size={16} className="mr-2" /> Configure Mission
+          </h2>
+          {isHost ? (
+            <>
+              <div className="border border-green-500 p-2 mb-4">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-green-500 font-mono text-sm">&gt; Genre:</span>
+                  <select
+                    className="bg-black text-green-500 border border-green-500 font-mono text-sm p-1"
+                    value={currentRoom.genreTag || GameGenre.HORROR}
+                    onChange={handleGenreChange}
+                  >
+                    {Object.values(GameGenre).map((genre) => (
+                      <option key={genre} value={genre} className="bg-black">
+                        {genre}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-green-500 font-mono text-sm">&gt; Mode:</span>
+                  <select
+                    className="bg-black text-green-500 border border-green-500 font-mono text-sm p-1"
+                    value={currentRoom.gameMode || GameMode.FREE_TEXT}
+                    onChange={handleGameModeChange}
+                  >
+                    {Object.values(GameMode).map((mode) => (
+                      <option key={mode} value={mode} className="bg-black">
+                        {mode === GameMode.FREE_TEXT ? 'Free Text' : 'Multiple Choice'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-green-500 font-mono text-sm">&gt; Mode:</span>
-                <select
-                  className="bg-black text-green-500 border border-green-500 font-mono text-sm p-1"
-                  value={currentRoom.gameMode || GameMode.FREE_TEXT}
-                  onChange={handleGameModeChange}
-                >
-                  {Object.values(GameMode).map((mode) => (
-                    <option key={mode} value={mode} className="bg-black">
-                      {mode === GameMode.FREE_TEXT ? 'Free Text' : 'Multiple Choice'}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <Button
-              variant="primary"
-              fullWidth
-              icon={<Play size={16} />}
-              onClick={handleStartGame}
-              disabled={countdown !== null}
-              className="bg-amber-500 hover:bg-amber-600 text-black font-mono"
-              aria-label="Start game"
-            >
-              {countdown !== null ? `[LAUNCHING IN ${countdown}...]` : '[LAUNCH]'}
-            </Button>
-          </div>
-        ) : (
-          <p className="text-green-500 font-mono text-sm text-center">
-            Awaiting Host Command...
-          </p>
-        )}
+              <Button
+                variant="primary"
+                fullWidth
+                icon={<Play size={16} />}
+                onClick={handleStartGame}
+                disabled={countdown !== null}
+                className="bg-amber-500 hover:bg-amber-600 text-black font-mono"
+                aria-label="Start game"
+              >
+                {countdown !== null ? `[LAUNCHING IN ${countdown}...]` : '[LAUNCH]'}
+              </Button>
+            </>
+          ) : (
+            <p className="text-green-500 font-mono text-sm text-center">
+              Awaiting Host Command...
+            </p>
+          )}
+        </div>
       </Card>
     </div>
   );
