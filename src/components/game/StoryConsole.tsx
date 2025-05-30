@@ -38,7 +38,7 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
   const [freestyleInput, setFreestyleInput] = useState('');
   const [isPlayerDead, setIsPlayerDead] = useState(false);
 
-  // Debug rendering conditions
+  // Debug rendering and input submission
   useEffect(() => {
     console.log('----StoryConsole Render Check----');
     console.log('currentRoom:', currentRoom);
@@ -91,6 +91,9 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
         alert('Please avoid using inappropriate language.');
         return;
       }
+      console.log('----Input Submission----');
+      console.log('freestyleInput:', freestyleInput);
+      console.log('gameMode:', currentRoom?.gameMode);
       onMakeChoice(freestyleInput);
       setFreestyleInput('');
     }
@@ -98,6 +101,9 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
 
   const handleOptionSelect = (option: string) => {
     if (!isProcessing && !isPlayerDead && !isCurrentPlayerDead && gameState !== GameState.ENDED) {
+      console.log('----Option Selection----');
+      console.log('option:', option);
+      console.log('gameMode:', currentRoom?.gameMode);
       onMakeChoice(option);
     }
   };
@@ -166,30 +172,24 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
         </div>
       )}
 
-      {gameMode === GameMode.MULTIPLE_CHOICE && (
+      {gameMode === GameMode.MULTIPLE_CHOICE && tempSegment?.aiResponse && extractOptions(tempSegment.aiResponse).length > 0 && (
         <div className="sticky bottom-0 bg-gray-900 p-4 rounded-lg shadow-lg">
           <div className="mb-2 text-sm font-mono text-green-400">
             <strong>{currentPlayer || 'Player'}'s turn:</strong> {getStatusMessage()}
           </div>
           <div className="space-y-2">
-            {tempSegment?.aiResponse && extractOptions(tempSegment.aiResponse).length > 0 ? (
-              extractOptions(tempSegment.aiResponse).map((option, index) => (
-                <Button
-                  key={index}
-                  variant={(isPlayerDead || isCurrentPlayerDead || gameState === GameState.ENDED || isProcessing) ? "danger" : "secondary"}
-                  onClick={() => handleOptionSelect(option)}
-                  disabled={isPlayerDead || isCurrentPlayerDead || gameState === GameState.ENDED || isProcessing}
-                  fullWidth
-                  className={`text-sm md:text-base ${(isPlayerDead || isCurrentPlayerDead || gameState === GameState.ENDED || isProcessing) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  {option}
-                </Button>
-              ))
-            ) : (
-              <div className="text-gray-500 text-sm text-center">
-                {isPlayerDead || isCurrentPlayerDead ? 'You have died' : gameState === GameState.ENDED ? 'Story has concluded' : 'Waiting for options...'}
-              </div>
-            )}
+            {extractOptions(tempSegment.aiResponse).map((option, index) => (
+              <Button
+                key={index}
+                variant={(isPlayerDead || isCurrentPlayerDead || gameState === GameState.ENDED || isProcessing) ? "danger" : "secondary"}
+                onClick={() => handleOptionSelect(option)}
+                disabled={isPlayerDead || isCurrentPlayerDead || gameState === GameState.ENDED || isProcessing}
+                fullWidth
+                className={`text-sm md:text-base ${(isPlayerDead || isCurrentPlayerDead || gameState === GameState.ENDED || isProcessing) ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                {option}
+              </Button>
+            ))}
           </div>
         </div>
       )}
