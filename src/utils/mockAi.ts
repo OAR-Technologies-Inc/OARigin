@@ -135,7 +135,7 @@ export const generateStoryContinuation = async ({
   playerInput,
   deadPlayers = [],
   newPlayers = [],
-  gameMode = 'multiple_choice'
+  gameMode
 }: {
   genre: GameGenre;
   players: string[];
@@ -144,7 +144,7 @@ export const generateStoryContinuation = async ({
   playerInput: string;
   deadPlayers?: string[];
   newPlayers?: string[];
-  gameMode?: 'free_text' | 'multiple_choice';
+  gameMode: 'free_text' | 'multiple_choice';
 }) => {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
