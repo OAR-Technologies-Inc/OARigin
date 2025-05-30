@@ -53,8 +53,8 @@ const GameScreen: React.FC = () => {
         try {
           const initialStory = await generateStoryBeginning(
             currentRoom.genreTag,
-            players.map(p => p.username),
-            currentRoom.gameMode
+            players,
+            currentRoom
           );
 
           const newSegment: StorySegment = {
