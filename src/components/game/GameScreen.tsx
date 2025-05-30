@@ -6,30 +6,25 @@ import StoryConsole from './StoryConsole';
 import ChatSidebar from './ChatSidebar';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
-import { StorySegment, GameState } from '../../types';
-import { buildNarrationPrompt } from '../../utils/promptBuilder';
-import { v4 as uuidv4 } from 'uuid';
-import { generateStoryBeginning, generateStoryContinuation } from '../../utils/mockAi';
+import { StorySegment } from '../../types';
+import {
+  generateStoryBeginning,
+  generateStoryContinuation,
+  simulateAiProcessing
+} from '../../utils/mockAi';
 
 const GameScreen: React.FC = () => {
   const navigate = useNavigate();
   const {
     currentRoom,
     players,
-    newPlayers,
     currentPlayerIndex,
     storySegments,
     addStorySegment,
-    gameState,
+    gameInProgress,
     loadingStory,
     setLoadingStory,
-    nextPlayerTurn,
-    clearNewPlayers,
-    setPlayerDeath,
-    checkGameEnd,
-    updateProgress,
-    setGameState,
-    progress,
+    nextPlayerTurn
   } = useGameStore();
 
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -37,12 +32,10 @@ const GameScreen: React.FC = () => {
   const hasStartedRef = useRef(false);
 
   useEffect(() => {
-    console.log('GameScreen state:', { currentRoom, gameState, players, currentPlayerIndex });
-    if (!currentRoom) {
-      console.log('Navigating to / because currentRoom is null');
+    if (!currentRoom || !gameInProgress) {
       navigate('/');
     }
-  }, [currentRoom, navigate]);
+  }, [currentRoom, gameInProgress, navigate]);
 
   useEffect(() => {
     const initializeStory = async () => {
@@ -51,19 +44,13 @@ const GameScreen: React.FC = () => {
         setLoadingStory(true);
 
         try {
-          const initialStory = await generateStoryBeginning(
-            currentRoom.genreTag,
-            players.map(p => p.username),
-            currentRoom.gameMode
-          );
+          const initialStory = await generateStoryBeginning(currentRoom.genreTag, players.map(p => p.username));
 
           const newSegment: StorySegment = {
-            id: uuidv4(),
+            id: Date.now().toString(),
             roomId: currentRoom.id,
             content: '',
             aiResponse: initialStory,
-            decisionType: 'freestyle',
-            options: [],
             createdAt: new Date().toISOString()
           };
 
@@ -71,12 +58,10 @@ const GameScreen: React.FC = () => {
         } catch (error) {
           console.error('Failed to generate story beginning:', error);
           const fallbackSegment: StorySegment = {
-            id: uuidv4(),
+            id: Date.now().toString(),
             roomId: currentRoom.id,
             content: '',
             aiResponse: 'The story begins to unfold... [An unexpected error occurred]',
-            decisionType: 'freestyle',
-            options: [],
             createdAt: new Date().toISOString()
           };
           setTempSegment(fallbackSegment);
@@ -87,144 +72,42 @@ const GameScreen: React.FC = () => {
     };
 
     initializeStory();
-  }, [currentRoom, storySegments, loadingStory, players]);
-
-  useEffect(() => {
-    const introduceNewPlayers = async () => {
-      if (loadingStory || !currentRoom || tempSegment || newPlayers.length === 0) return;
-
-      setLoadingStory(true);
-
-      try {
-        const deadPlayers = players.filter(p => p.status === 'dead').map(p => p.username);
-
-        const prompt = buildNarrationPrompt({
-          genre: currentRoom.genreTag,
-          players: players.map(p => p.username),
-          storyLog: storySegments.map(s => s.aiResponse || s.content).filter(s => s),
-          currentPlayer: '',
-          playerInput: '',
-          deadPlayers,
-          newPlayers: newPlayers.map(p => p.username),
-          gameMode: currentRoom.gameMode,
-          tone: 'tense',
-          playerRoles: {},
-          storyPhase: storySegments.length < 3 ? 'opening' : storySegments.length < 6 ? 'rising' : storySegments.length < 9 ? 'climax' : 'resolution',
-          sessionGoal: 'medium',
-          inventory: [],
-          turnCount: storySegments.length,
-          progress,
-        });
-
-        const { text } = await generateStoryContinuation({
-          genre: currentRoom.genreTag,
-          players: players.map(p => p.username),
-          storyLog: storySegments.map(s => s.aiResponse || s.content).filter(s => s),
-          currentPlayer: '',
-          playerInput: '',
-          deadPlayers,
-          newPlayers: newPlayers.map(p => p.username),
-          gameMode: currentRoom.gameMode
-        });
-
-        const newSegment: StorySegment = {
-          id: uuidv4(),
-          roomId: currentRoom.id,
-          content: '',
-          aiResponse: text,
-          decisionType: 'freestyle',
-          options: [],
-          createdAt: new Date().toISOString()
-        };
-
-        setTempSegment(newSegment);
-        clearNewPlayers();
-      } catch (error) {
-        console.error('Failed to introduce new players:', error);
-        const fallbackSegment: StorySegment = {
-          id: uuidv4(),
-          roomId: currentRoom.id,
-          content: '',
-          aiResponse: 'A new presence joins the story... [An unexpected error occurred]',
-          decisionType: 'freestyle',
-          options: [],
-          createdAt: new Date().toISOString()
-        };
-        setTempSegment(fallbackSegment);
-        clearNewPlayers();
-      } finally {
-        setLoadingStory(false);
-      }
-    };
-
-    introduceNewPlayers();
-  }, [newPlayers, loadingStory, currentRoom, tempSegment, storySegments, players]);
+  }, [currentRoom, storySegments, loadingStory]);
 
   const handleMakeChoice = async (choice: string) => {
-    const isCurrentPlayerDead = players[currentPlayerIndex]?.status === 'dead';
-    console.log('handleMakeChoice called:', { choice, isCurrentPlayerDead, gameState, currentPlayerIndex, players });
-
-    if (loadingStory || !currentRoom || tempSegment || gameState === GameState.ENDED || isCurrentPlayerDead) {
-      console.log('handleMakeChoice aborted:', { loadingStory, currentRoom, tempSegment, gameState, isCurrentPlayerDead });
-      return;
-    }
+    if (loadingStory || !currentRoom || tempSegment) return;
 
     setLoadingStory(true);
 
     try {
-      const deadPlayers = players.filter(p => p.status === 'dead').map(p => p.username);
-      
-      const { text, playerDied } = await generateStoryContinuation({
-        genre: currentRoom.genreTag,
-        players: players.map(p => p.username),
-        storyLog: storySegments.map(s => s.aiResponse || s.content).filter(s => s),
-        currentPlayer: players[currentPlayerIndex].username,
-        playerInput: choice,
-        deadPlayers,
-        newPlayers: [],
-        gameMode: currentRoom.gameMode,
-      });
-      let cleanText = text;
-
-      if (playerDied) {
-        setPlayerDeath(players[currentPlayerIndex].username);
-      }
-
-      if (cleanText.includes('[GAME_ENDED]')) {
-        cleanText = cleanText.replace('[GAME_ENDED]', '');
-        setGameState(GameState.ENDED);
-      }
-
-      const updatedProgress = parseProgressUpdates(cleanText, currentRoom.genreTag);
-      updateProgress(updatedProgress);
+      const previousSegment = storySegments[storySegments.length - 1]?.aiResponse || '';
+      const aiResponse = await generateStoryContinuation(
+        previousSegment,
+        choice,
+        currentRoom.genreTag
+      );
 
       const newSegment: StorySegment = {
-        id: uuidv4(),
+        id: Date.now().toString(),
         roomId: currentRoom.id,
         content: choice,
-        aiResponse: cleanText,
-        decisionType: 'freestyle',
-        options: [],
+        aiResponse,
         createdAt: new Date().toISOString()
       };
 
       setTempSegment(newSegment);
       nextPlayerTurn();
-      checkGameEnd();
     } catch (error) {
       console.error('Failed to generate story continuation:', error);
       const fallbackSegment: StorySegment = {
-        id: uuidv4(),
+        id: Date.now().toString(),
         roomId: currentRoom.id,
         content: choice,
         aiResponse: 'The story pauses momentarily... [An unexpected error occurred]',
-        decisionType: 'freestyle',
-        options: [],
         createdAt: new Date().toISOString()
       };
       setTempSegment(fallbackSegment);
       nextPlayerTurn();
-      checkGameEnd();
     } finally {
       setLoadingStory(false);
     }
@@ -236,7 +119,7 @@ const GameScreen: React.FC = () => {
     storySegments.forEach((segment) => {
       transcriptText += segment.aiResponse + '\n\n';
       if (segment.content) {
-        transcriptText +=  '${segment.content}\n\n';
+        transcriptText += `> ${segment.content}\n\n`;
       }
     });
 
@@ -252,7 +135,6 @@ const GameScreen: React.FC = () => {
   };
 
   const currentPlayer = players[currentPlayerIndex]?.username || 'Player';
-  const isCurrentPlayerDead = players[currentPlayerIndex]?.status === 'dead';
 
   return (
     <div className="min-h-screen flex flex-col p-2 md:p-4">
@@ -279,7 +161,7 @@ const GameScreen: React.FC = () => {
             icon={<Users size={16} />}
             className="px-2 md:px-3"
           >
-            {players.filter(p => p.status === 'alive').length}/{players.length}
+            {players.length}
           </Button>
 
           <Button
@@ -313,48 +195,12 @@ const GameScreen: React.FC = () => {
           onMakeChoice={handleMakeChoice}
           isProcessing={loadingStory}
           currentPlayer={currentPlayer}
-          isCurrentPlayerDead={isCurrentPlayerDead}
-          gameState={gameState}
         />
       </Card>
 
       <ChatSidebar isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
     </div>
   );
-};
-
-// Utility to parse progress updates from AI response
-const parseProgressUpdates = (aiResponse: string, genre: string): Partial<GameProgress> => {
-  const updates: Partial<GameProgress> = {};
-
-  // Simple parsing logic (adjust based on your AI response format)
-  // For example, look for specific keywords indicating progress
-  if (genre.toLowerCase() === 'survival') {
-    if (aiResponse.toLowerCase().includes('you travel') || aiResponse.toLowerCase().includes('miles')) {
-      updates.milesTraveled = (progress.milesTraveled || 0) + 1;
-    }
-    if (aiResponse.toLowerCase().includes('day passes') || aiResponse.toLowerCase().includes('another day')) {
-      updates.daysSurvived = (progress.daysSurvived || 0) + 1;
-    }
-  } else if (genre.toLowerCase() === 'fantasy') {
-    if (aiResponse.toLowerCase().includes('artifact') || aiResponse.toLowerCase().includes('relic')) {
-      updates.artifactsFound = (progress.artifactsFound || 0) + 1;
-    }
-  } else if (genre.toLowerCase() === 'horror' || genre.toLowerCase() === 'mystery') {
-    if (aiResponse.toLowerCase().includes('clue') || aiResponse.toLowerCase().includes('evidence')) {
-      updates.cluesFound = (progress.cluesFound || 0) + 1;
-    }
-  } else if (genre.toLowerCase() === 'sci-fi') {
-    if (aiResponse.toLowerCase().includes('node') || aiResponse.toLowerCase().includes('disabled')) {
-      updates.nodesDisabled = (progress.nodesDisabled || 0) + 1;
-    }
-  } else if (genre.toLowerCase() === 'adventure') {
-    if (aiResponse.toLowerCase().includes('you progress') || aiResponse.toLowerCase().includes('closer to')) {
-      updates.distanceCovered = (progress.distanceCovered || 0) + 10;
-    }
-  }
-
-  return updates;
 };
 
 export default GameScreen;
