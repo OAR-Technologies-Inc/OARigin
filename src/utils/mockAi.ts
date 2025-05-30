@@ -46,10 +46,10 @@ export const generateStoryBeginning = async (
     }
 
     const prompt = buildNarrationPrompt({
-      genre,
-      players,
-      room,
-    });
+  genre: String(room.genreTag),
+  players: players.map(p => p.username),
+  gameMode: room.gameMode
+});
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
