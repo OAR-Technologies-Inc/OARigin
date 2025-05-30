@@ -25,7 +25,6 @@ const GameScreen: React.FC = () => {
     nextPlayerTurn,
     clearNewPlayers,
     setPlayerDeath,
-    checkGameEnd,
     updateProgress,
     setGameState,
     progress,
@@ -44,9 +43,7 @@ const GameScreen: React.FC = () => {
     console.log('genreTag:', currentRoom?.genreTag);
     console.log('players:', players);
     console.log('currentPlayerIndex:', currentPlayerIndex);
-    console.log('nextPlayerTurn:', nextPlayerTurn);
-    console.log('checkGameEnd:', checkGameEnd);
-  }, [currentRoom, players, currentPlayerIndex, nextPlayerTurn, checkGameEnd]);
+  }, [currentRoom, players, currentPlayerIndex]);
 
   useEffect(() => {
     if (!currentRoom) navigate('/');
@@ -117,6 +114,10 @@ const GameScreen: React.FC = () => {
         gameMode: currentRoom.gameMode,
       });
 
+      console.log('----Story Continuation Response----');
+      console.log('text:', text);
+      console.log('playerDied:', playerDied);
+
       if (playerDied) setPlayerDeath(players[currentPlayerIndex].username);
       if (text.includes('[GAME_ENDED]')) {
         setGameState(GameState.ENDED);
@@ -138,22 +139,7 @@ const GameScreen: React.FC = () => {
       setTempSegment(newSegment);
       setAnimationComplete(false);
 
-      // Fallback nextPlayerTurn logic
-      if (typeof nextPlayerTurn === 'function') {
-        nextPlayerTurn();
-      } else {
-        console.warn('nextPlayerTurn is not a function, using fallback');
-        useGameStore.setState({
-          currentPlayerIndex: (currentPlayerIndex + 1) % players.length,
-        });
-      }
-
-      // Fallback checkGameEnd logic
-      if (typeof checkGameEnd === 'function') {
-        checkGameEnd();
-      } else {
-        console.warn('checkGameEnd is not a function, skipping');
-      }
+      nextPlayerTurn();
     } catch (error) {
       console.error('Handle choice error:', error);
       const fallback: StorySegment = {
@@ -166,21 +152,7 @@ const GameScreen: React.FC = () => {
         createdAt: new Date().toISOString(),
       };
       setTempSegment(fallback);
-      // Fallback nextPlayerTurn logic for error case
-      if (typeof nextPlayerTurn === 'function') {
-        nextPlayerTurn();
-      } else {
-        console.warn('nextPlayerTurn is not a function, using fallback');
-        useGameStore.setState({
-          currentPlayerIndex: (currentPlayerIndex + 1) % players.length,
-        });
-      }
-      // Fallback checkGameEnd logic for error case
-      if (typeof checkGameEnd === 'function') {
-        checkGameEnd();
-      } else {
-        console.warn('checkGameEnd is not a function, skipping');
-      }
+      nextPlayerTurn();
     } finally {
       setLoadingStory(false);
     }
@@ -245,8 +217,9 @@ const GameScreen: React.FC = () => {
   );
 };
 
-const parseProgressUpdates = (aiResponse: string, genre: string = 'adventure', progress: any): Partial<GameProgress> => {
+const parseProgressUpdates = (aiResponse: string = '', genre: string = 'adventure', progress: any): Partial<GameProgress> => {
   const updates: Partial<GameProgress> = {};
+  if (!aiResponse) return updates;
   const text = aiResponse.toLowerCase();
   if (genre.toLowerCase() === 'survival') {
     if (text.includes('you travel') || text.includes('miles')) updates.milesTraveled = (progress.milesTraveled || 0) + 1;
