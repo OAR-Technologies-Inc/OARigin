@@ -29,7 +29,7 @@ interface GameStore {
   setLoadingStory: (loading: boolean) => void;
   setPresenceChannel: (channel: RealtimeChannel) => void;
   startGame: () => void;
-  markPlayerDead: (username: string) => void;
+  markPlayerDead: (userId: string) => void;
   setProgress: (progress: GameProgress) => void;
   updateProgress: (progress: Partial<GameProgress>) => void;
   nextPlayerTurn: () => void;
@@ -76,10 +76,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     progress: {}
   })),
 
-  markPlayerDead: (username) => set((state) => ({
-    deadPlayers: [...state.deadPlayers, username],
+  markPlayerDead: (userId) => set((state) => ({
+    deadPlayers: [...state.deadPlayers, userId],
     players: state.players.map(p => 
-      p.username === username ? { ...p, status: 'dead' } : p
+      p.id === userId ? { ...p, status: 'dead' } : p
     )
   })),
 
@@ -94,7 +94,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   })),
 
   checkGameEnd: () => set((state) => {
-    const allDead = state.players.every(p => state.deadPlayers.includes(p.username));
+    const allDead = state.players.every(p => state.deadPlayers.includes(p.id));
     if (allDead) {
       return { gameState: GameState.ENDED };
     }
@@ -201,7 +201,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     const { data: players } = await supabase
       .from('sessions')
-      .select('user_id')
+      .select('user_id, users!inner(username)')
       .eq('room_id', room.id)
       .eq('is_active', true);
 
@@ -211,7 +211,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       currentRoom: room,
       players: players?.map(p => ({
         id: p.user_id,
-        username: 'Player',
+        username: p.users?.username || 'Player',
         avatar: '',
         status: 'alive'
       })) || [],
