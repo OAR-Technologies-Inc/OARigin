@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Clock, Copy, Play, Users } from 'lucide-react';
-import { useGameStore } from '../store';
+import { useGameStore } from '../../store';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
-import { GameGenre, GameMode } from '../types';
+import { GameGenre, GameMode } from '../../types';
 
 const LobbyScreen: React.FC = () => {
   const navigate = useNavigate();
