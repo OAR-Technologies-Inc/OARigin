@@ -103,7 +103,7 @@ const GameScreen: React.FC = () => {
 
     try {
       const deadPlayers = players.filter(p => p.status === 'dead').map(p => p.username);
-      const { text, playerDied } = await generateStoryContinuation({
+      const result = await generateStoryContinuation({
         genre: currentRoom.genreTag || 'adventure',
         players: players.map(p => p.username),
         storyLog: storySegments.map(s => s.aiResponse || s.content).filter(Boolean),
@@ -113,6 +113,9 @@ const GameScreen: React.FC = () => {
         newPlayers: [],
         gameMode: currentRoom.gameMode,
       });
+
+      const text = result?.text || '';
+      const playerDied = result?.playerDied || false;
 
       console.log('----Story Continuation Response----');
       console.log('text:', text);
