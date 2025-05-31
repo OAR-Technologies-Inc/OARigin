@@ -124,7 +124,10 @@ const Home: React.FC = () => {
 
   return (
     <Layout>
-      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-black via-gray-900 to-black text-white font-mono">
+      <div className=<div
+  className="min-h-screen bg-cover bg-center bg-no-repeat flex items-center justify-center p-4"
+  style={{ backgroundImage: 'url("/oarigin-bg.jpg")' }}
+>
         <div className="w-full max-w-5xl">
           <div className="text-center mb-10">
             <img 
