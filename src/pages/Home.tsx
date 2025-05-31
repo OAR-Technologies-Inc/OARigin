@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, LogIn, UserCircle } from 'lucide-react';
+import { Plus, LogIn } from 'lucide-react';
 import Layout from '../components/layout/Layout';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
@@ -87,14 +87,13 @@ const Home: React.FC = () => {
       if (!currentUser) return;
 
       const { data: waitEntries } = await supabase
-  .from('waiting_pool')
-  .select('status')
-  .eq('user_id', currentUser.id)
-  .eq('status', 'matched')
-  .limit(1);
+        .from('waiting_pool')
+        .select('status')
+        .eq('user_id', currentUser.id)
+        .eq('status', 'matched')
+        .limit(1);
 
-if (!waitEntries || waitEntries.length === 0) return;
-
+      if (!waitEntries || waitEntries.length === 0) return;
 
       const { data: session } = await supabase
         .from('sessions')
@@ -125,21 +124,23 @@ if (!waitEntries || waitEntries.length === 0) return;
 
   return (
     <Layout>
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="w-full max-w-4xl">
-          <div className="text-center mb-8">
-            <Logo size="lg" />
-            <h1 className="text-4xl font-bold font-mono text-green-500 mb-2">
-              AI Storytelling Adventure
-            </h1>
-            <p className="text-xl text-gray-300">
-              Embark on a cooperative text adventure with friends
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-black via-gray-900 to-black text-white font-mono">
+        <div className="w-full max-w-5xl">
+          <div className="text-center mb-10">
+            <img 
+              src="/oarigin-retro-mystic.png" 
+              alt="OARigin title image" 
+              className="mx-auto w-full max-w-md mb-6 border border-purple-900 shadow-lg rounded" 
+            />
+            <h1 className="text-5xl font-bold text-purple-300 tracking-widest">OARigin</h1>
+            <p className="text-md mt-4 text-purple-500">
+              Step into a mythic terminal where your decisions shape reality. Enter as yourself. Leave as legend.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-6">
-            <Card className="p-8">
-              <h2 className="text-xl font-mono font-bold text-green-500 mb-4 flex items-center">
+          <div className="grid md:grid-cols-2 gap-8">
+            <Card className="p-8 bg-gray-900/70 border border-purple-800">
+              <h2 className="text-xl font-bold text-purple-400 mb-4 flex items-center">
                 <Plus size={18} className="mr-2" />
                 Create New Adventure
               </h2>
@@ -156,11 +157,11 @@ if (!waitEntries || waitEntries.length === 0) return;
                 )}
 
                 <div>
-                  <label className="block text-green-500 font-mono text-sm mb-1">
+                  <label className="block text-purple-300 text-sm mb-1">
                     Select Genre
                   </label>
                   <select
-                    className="bg-gray-800 border border-green-500 rounded-md px-4 py-2 w-full text-green-500"
+                    className="bg-black border border-purple-600 rounded-md px-4 py-2 w-full text-purple-300"
                     value={selectedGenre}
                     onChange={(e) => setSelectedGenre(e.target.value as GameGenre)}
                   >
@@ -176,9 +177,9 @@ if (!waitEntries || waitEntries.length === 0) return;
                     id="isPublic"
                     checked={isPublic}
                     onChange={(e) => setIsPublic(e.target.checked)}
-                    className="rounded border-green-500 text-green-500 focus:ring-green-500"
+                    className="rounded border-purple-600 text-purple-600 focus:ring-purple-600"
                   />
-                  <label htmlFor="isPublic" className="text-green-500 font-mono text-sm">
+                  <label htmlFor="isPublic" className="text-purple-300 text-sm">
                     Public Room (Allow Matchmaking)
                   </label>
                 </div>
@@ -202,15 +203,11 @@ if (!waitEntries || waitEntries.length === 0) return;
                 >
                   Join Matchmaking
                 </Button>
-
-                <div className="text-sm text-gray-400">
-                  Create or join a public game to find teammates automatically.
-                </div>
               </div>
             </Card>
 
-            <Card className="p-8">
-              <h2 className="text-xl font-mono font-bold text-green-500 mb-4 flex items-center">
+            <Card className="p-8 bg-gray-900/70 border border-purple-800">
+              <h2 className="text-xl font-bold text-purple-400 mb-4 flex items-center">
                 <LogIn size={18} className="mr-2" />
                 Join Existing Adventure
               </h2>
@@ -243,10 +240,6 @@ if (!waitEntries || waitEntries.length === 0) return;
                 >
                   Join Room
                 </Button>
-
-                <div className="text-sm text-gray-400">
-                  Enter a room code to join an existing adventure.
-                </div>
               </div>
             </Card>
           </div>
@@ -257,3 +250,4 @@ if (!waitEntries || waitEntries.length === 0) return;
 };
 
 export default Home;
+
