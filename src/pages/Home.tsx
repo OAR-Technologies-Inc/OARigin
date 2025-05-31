@@ -131,7 +131,7 @@ const Home: React.FC = () => {
       <div className="w-full max-w-5xl">
         <div className="text-center mb-10">
           <img 
-            src="/oarigin-retro-mystic.png" 
+            
             alt="OARigin title image" 
             className="mx-auto w-full max-w-md mb-6 border border-purple-900 shadow-lg rounded" 
           />
