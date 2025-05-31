@@ -131,7 +131,6 @@ const Home: React.FC = () => {
       <div className="w-full max-w-5xl">
         <div className="text-center mb-10">
           <img  
-           
           />
           <h1 className="text-5xl font-bold text-purple-300 tracking-widest">OARigin</h1>
           <p className="text-md mt-4 text-purple-500">
