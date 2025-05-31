@@ -250,5 +250,8 @@ const Home: React.FC = () => {
     </div>
   </Layout>
 );
+};
+
+export default Home;
 
 
