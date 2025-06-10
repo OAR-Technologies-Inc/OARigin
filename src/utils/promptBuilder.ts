@@ -54,7 +54,7 @@ Narration Instructions:
 - Conclude the story immediately, as all players have died. Narrate a final scene reflecting on the group's fate with emotional impact (e.g., "Your group succumbs to the wilderness, your story ending in the dense jungle as the storm rages on."). Do not prompt for further actions or choices, as the game has ended. Do not continue the narrative beyond death (e.g., no afterlife scenarios, ghostly perspectives, or repetitive prompts). Append [GAME_ENDED] to the end of your response to signal the game has ended.
 - Do not break character as the narrator. Keep the conclusion concise and immersive.
 
-Continue the story from the narrator’s perspective.
+Do not continue the story if all players are dead.
 `;
   }
 
