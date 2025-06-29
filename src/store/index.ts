@@ -18,6 +18,7 @@ interface GameStore {
   deadPlayers: string[];
   progress: GameProgress;
   isHost: boolean;
+  newPlayers: User[];
   setUser: (user: User | null) => void;
   setAuthenticated: (isAuth: boolean) => void;
   setRoom: (room: Room | null) => void;
@@ -34,6 +35,8 @@ interface GameStore {
   updateProgress: (progress: Partial<GameProgress>) => void;
   nextPlayerTurn: () => void;
   checkGameEnd: () => void;
+  clearNewPlayers: () => void;
+  generateTempUser: (username: string) => void;
   joinMatchmaking: (genre: GameGenre) => Promise<void>;
   leaveMatchmaking: () => Promise<void>;
   createRoom: (genre: GameGenre, isPublic: boolean) => Promise<void>;
@@ -54,6 +57,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   deadPlayers: [],
   progress: {},
   isHost: false,
+  newPlayers: [],
 
   setUser: (user) => set({ currentUser: user }),
   setAuthenticated: (isAuth) => set({ isAuthenticated: isAuth }),
@@ -65,6 +69,18 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setGameState: (state) => set({ gameState: state }),
   setLoadingStory: (loading) => set({ loadingStory: loading }),
   setPresenceChannel: (channel) => set({ presenceChannel: channel }),
+  clearNewPlayers: () => set({ newPlayers: [] }),
+
+  generateTempUser: (username) => {
+    const tempUser: User = {
+      id: uuidv4(),
+      username,
+      avatar: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${username}`,
+      oarWalletLinked: false,
+      status: 'alive'
+    };
+    set({ currentUser: tempUser, isAuthenticated: true });
+  },
 
   startGame: () => set((state) => ({
     gameState: GameState.PLAYING,
@@ -89,9 +105,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
     progress: { ...state.progress, ...progress }
   })),
 
-  nextPlayerTurn: () => set((state) => ({
-    currentPlayerIndex: (state.currentPlayerIndex + 1) % state.players.length,
-  })),
+  nextPlayerTurn: () => set((state) => {
+    const alivePlayers = state.players.filter(p => p.status === 'alive');
+    if (alivePlayers.length === 0) return state;
+    
+    let nextIndex = (state.currentPlayerIndex + 1) % state.players.length;
+    
+    // Skip dead players
+    while (state.players[nextIndex]?.status === 'dead' && alivePlayers.length > 0) {
+      nextIndex = (nextIndex + 1) % state.players.length;
+    }
+    
+    return { currentPlayerIndex: nextIndex };
+  }),
 
   checkGameEnd: () => set((state) => {
     const allDead = state.players.every(p => state.deadPlayers.includes(p.id));
@@ -105,6 +131,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const { currentUser } = get();
     if (!currentUser) throw new Error('No user logged in');
 
+    // Check if user is already in matchmaking
     const { data: existing } = await supabase
       .from('waiting_pool')
       .select()
@@ -148,19 +175,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const { data: room, error } = await supabase
       .from('rooms')
       .insert({
-        id: uuidv4(),
         code: roomCode,
         genre_tag: genre,
-        status: RoomStatus.LOBBY,
+        status: 'open',
         host_id: currentUser.id,
         is_public: isPublic,
-        game_mode: 'free_text'
+        game_mode: GameMode.FREE_TEXT
       })
       .select()
       .single();
 
     if (error) throw error;
 
+    // Create session for the host
     const { error: sessionError } = await supabase
       .from('sessions')
       .insert({
@@ -172,7 +199,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (sessionError) throw sessionError;
 
     set({
-      currentRoom: room,
+      currentRoom: {
+        id: room.id,
+        code: room.code,
+        status: room.status as RoomStatus,
+        currentNarrativeState: room.current_narrative_state || '',
+        genreTag: room.genre_tag as GameGenre,
+        createdAt: room.created_at,
+        hostId: room.host_id,
+        gameMode: (room.game_mode as GameMode) || GameMode.FREE_TEXT
+      },
       players: [currentUser],
       isHost: true,
       gameState: GameState.LOBBY
@@ -180,15 +216,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   joinRoom: async (userId: string, roomCode: string) => {
+    // Find room by code
     const { data: room, error } = await supabase
       .from('rooms')
       .select('*')
       .eq('code', roomCode)
-      .eq('status', RoomStatus.LOBBY)
+      .eq('status', 'open')
       .single();
 
     if (error || !room) throw new Error('Room not found or no longer available');
 
+    // Create session for the user
     const { error: sessionError } = await supabase
       .from('sessions')
       .insert({
@@ -199,22 +237,38 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     if (sessionError) throw sessionError;
 
-    const { data: players } = await supabase
+    // Get all players in the room
+    const { data: sessions } = await supabase
       .from('sessions')
-      .select('user_id, users!inner(username)')
+      .select(`
+        user_id,
+        profiles!inner(username, avatar_url)
+      `)
       .eq('room_id', room.id)
       .eq('is_active', true);
+
+    const players: User[] = sessions?.map(session => ({
+      id: session.user_id,
+      username: session.profiles?.username || 'Player',
+      avatar: session.profiles?.avatar_url || `https://api.dicebear.com/7.x/pixel-art/svg?seed=${session.profiles?.username || 'player'}`,
+      oarWalletLinked: false,
+      status: 'alive'
+    })) || [];
 
     const isHost = room.host_id === userId;
 
     set({
-      currentRoom: room,
-      players: players?.map(p => ({
-        id: p.user_id,
-        username: p.users?.username || 'Player',
-        avatar: '',
-        status: 'alive'
-      })) || [],
+      currentRoom: {
+        id: room.id,
+        code: room.code,
+        status: room.status as RoomStatus,
+        currentNarrativeState: room.current_narrative_state || '',
+        genreTag: room.genre_tag as GameGenre,
+        createdAt: room.created_at,
+        hostId: room.host_id,
+        gameMode: (room.game_mode as GameMode) || GameMode.FREE_TEXT
+      },
+      players,
       isHost,
       gameState: GameState.LOBBY
     });

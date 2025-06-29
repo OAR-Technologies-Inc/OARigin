@@ -8,9 +8,11 @@ export enum GameGenre {
 }
 
 export enum RoomStatus {
+  LOBBY = 'open',
   OPEN = 'open',
   IN_PROGRESS = 'in_progress',
-  CLOSED = 'closed'
+  CLOSED = 'closed',
+  ABANDONED = 'abandoned'
 }
 
 export enum DecisionType {
@@ -24,6 +26,7 @@ export enum GameMode {
 }
 
 export enum GameState {
+  LOBBY = 'lobby',
   PLAYING = 'playing',
   ENDED = 'ended'
 }

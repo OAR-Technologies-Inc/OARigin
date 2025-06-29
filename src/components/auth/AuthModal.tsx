@@ -5,7 +5,6 @@ import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Card from '../ui/Card';
 import { useGameStore } from '../../store';
-import { supabase } from '../../lib/supabase';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -48,49 +47,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => 
         if (error) throw error;
         if (!data?.user) throw new Error('Login failed. Please try again.');
 
-        let userProfile = profile;
-        if (!profile) {
-          // Ensure session is set
-          const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-          if (sessionError || !sessionData.session) {
-            throw new Error('Failed to authenticate session. Please try logging in again.');
-          }
-
-          // Check if profile exists
-          const { data: existingProfile, error: profileError } = await supabase
-            .from('profiles')
-            .select()
-            .eq('id', data.user.id)
-            .single();
-
-          if (!existingProfile && !profileError) {
-            // Only create profile if it doesn't exist
-            const { data: newProfile, error: insertError } = await supabase
-              .from('profiles')
-              .insert([
-                {
-                  id: data.user.id,
-                  username: formData.email.split('@')[0],
-                  avatar_url: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${formData.email.split('@')[0]}`,
-                },
-              ])
-              .select()
-              .single();
-
-            if (insertError) throw insertError;
-            userProfile = newProfile;
-          } else if (existingProfile) {
-            userProfile = existingProfile;
-          } else if (profileError && !profileError.message.includes('not_found')) {
-            throw profileError;
-          }
-        }
-
         // Update app state with user and profile data
         setUser({
           id: data.user.id,
-          username: userProfile?.username || formData.email.split('@')[0],
-          avatar: userProfile?.avatar_url || `https://api.dicebear.com/7.x/pixel-art/svg?seed=${formData.email.split('@')[0]}`,
+          username: profile?.username || formData.email.split('@')[0],
+          avatar: profile?.avatar_url || `https://api.dicebear.com/7.x/pixel-art/svg?seed=${formData.email.split('@')[0]}`,
           oarWalletLinked: false,
           status: 'alive'
         });
@@ -100,16 +61,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => 
           throw new Error(`Please wait ${cooldown} seconds before trying again`);
         }
 
-        // Sign up the user
-        const { data, error } = await supabase.auth.signUp({
-          email: formData.email,
-          password: formData.password,
-          options: {
-            data: {
-              username: formData.username,
-            },
-          },
-        });
+        const { data, profile, error } = await signUpUser(formData.email, formData.password, formData.username);
         
         if (error) {
           if (error.message.includes('rate_limit')) {
@@ -120,56 +72,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => 
         
         if (!data?.user) throw new Error('User creation failed. Please try again.');
 
-        // Sign in the user to set the session
-        const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
-          email: formData.email,
-          password: formData.password,
-        });
-
-        if (loginError || !loginData?.user) {
-          throw new Error('Signup successful, but failed to set session. Please try logging in.');
-        }
-
-        // Ensure session is set
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError || !sessionData.session) {
-          throw new Error('Failed to authenticate session. Please try logging in.');
-        }
-
-        // Check if profile already exists
-        const { data: existingProfile, error: profileCheckError } = await supabase
-          .from('profiles')
-          .select()
-          .eq('id', loginData.user.id)
-          .single();
-
-        let profileData = existingProfile;
-
-        if (!existingProfile && !profileCheckError) {
-          // Only create profile if it doesn't exist
-          const { data: newProfile, error: profileError } = await supabase
-            .from('profiles')
-            .insert([
-              {
-                id: loginData.user.id,
-                username: formData.username,
-                avatar_url: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${formData.username}`,
-              },
-            ])
-            .select()
-            .single();
-          
-          if (profileError) throw profileError;
-          profileData = newProfile;
-        } else if (profileCheckError && !profileCheckError.message.includes('not_found')) {
-          throw profileCheckError;
-        }
-
         // Update app state with user and profile data
         setUser({
-          id: loginData.user.id,
+          id: data.user.id,
           username: formData.username,
-          avatar: profileData?.avatar_url || `https://api.dicebear.com/7.x/pixel-art/svg?seed=${formData.username}`,
+          avatar: profile?.avatar_url || `https://api.dicebear.com/7.x/pixel-art/svg?seed=${formData.username}`,
           oarWalletLinked: false,
           status: 'alive'
         });

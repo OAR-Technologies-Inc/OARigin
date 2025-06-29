@@ -21,15 +21,35 @@ export const signUpUser = async (email: string, password: string, username: stri
     },
   });
   
-  if (error) return { data: null, error };
+  if (error) return { data: null, profile: null, error };
   
-  // Refresh session to ensure it's available
-  const { data: sessionData, error: sessionError } = await supabase.auth.refreshSession();
-  if (sessionError || !sessionData.session) {
-    return { data: null, error: new Error('Failed to authenticate session after signup') };
+  if (!data?.user) return { data: null, profile: null, error: new Error('User creation failed') };
+
+  // Create profile after successful signup
+  let profile = null;
+  try {
+    const { data: newProfile, error: profileError } = await supabase
+      .from('profiles')
+      .insert([
+        {
+          id: data.user.id,
+          username,
+          avatar_url: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${username}`,
+        },
+      ])
+      .select()
+      .single();
+    
+    if (profileError) {
+      console.error('Profile creation error:', profileError);
+    } else {
+      profile = newProfile;
+    }
+  } catch (err) {
+    console.error('Profile creation failed:', err);
   }
   
-  return { data, error: null };
+  return { data, profile, error: null };
 };
 
 export const signInUser = async (email: string, password: string) => {
@@ -38,15 +58,29 @@ export const signInUser = async (email: string, password: string) => {
     password,
   });
   
-  if (error) return { data: null, error };
+  if (error) return { data: null, profile: null, error };
 
-  // Refresh session to ensure it's available
-  const { data: sessionData, error: sessionError } = await supabase.auth.refreshSession();
-  if (sessionError || !sessionData.session) {
-    return { data: null, error: new Error('Failed to authenticate session after login') };
+  if (!data?.user) return { data: null, profile: null, error: new Error('Login failed') };
+
+  // Get user profile
+  let profile = null;
+  try {
+    const { data: userProfile, error: profileError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', data.user.id)
+      .single();
+    
+    if (profileError) {
+      console.error('Profile fetch error:', profileError);
+    } else {
+      profile = userProfile;
+    }
+  } catch (err) {
+    console.error('Profile fetch failed:', err);
   }
 
-  return { data, error: null };
+  return { data, profile, error: null };
 };
 
 export const signOutUser = async () => {
@@ -57,8 +91,8 @@ export const signOutUser = async () => {
 // Profile functions
 export const getProfile = async (userId: string) => {
   const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-  if (sessionError || !session || session.user.id !== userId) {
-    return { data: null, error: new Error('Unauthorized access') };
+  if (sessionError || !session) {
+    return { data: null, error: new Error('No active session') };
   }
 
   const { data, error } = await supabase
@@ -79,7 +113,109 @@ export const updateProfile = async (userId: string, updates: any) => {
   const { data, error } = await supabase
     .from('profiles')
     .update(updates)
-    .eq('id', userId);
+    .eq('id', userId)
+    .select()
+    .single();
   
+  return { data, error };
+};
+
+// Room functions
+export const createGameRoom = async (hostId: string, genre: string, isPublic: boolean = false) => {
+  const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+  
+  const { data, error } = await supabase
+    .from('rooms')
+    .insert({
+      code: roomCode,
+      genre_tag: genre,
+      host_id: hostId,
+      is_public: isPublic,
+      status: 'open'
+    })
+    .select()
+    .single();
+    
+  return { data, error };
+};
+
+export const joinGameRoom = async (userId: string, roomCode: string) => {
+  // First check if room exists and is open
+  const { data: room, error: roomError } = await supabase
+    .from('rooms')
+    .select('*')
+    .eq('code', roomCode)
+    .eq('status', 'open')
+    .single();
+    
+  if (roomError || !room) {
+    return { data: null, error: new Error('Room not found or not available') };
+  }
+  
+  // Create session for user
+  const { data: session, error: sessionError } = await supabase
+    .from('sessions')
+    .insert({
+      user_id: userId,
+      room_id: room.id,
+      is_active: true
+    })
+    .select()
+    .single();
+    
+  if (sessionError) {
+    return { data: null, error: sessionError };
+  }
+  
+  return { data: { room, session }, error: null };
+};
+
+// Session functions
+export const getUserActiveSessions = async (userId: string) => {
+  const { data, error } = await supabase
+    .from('sessions')
+    .select(`
+      *,
+      rooms!inner(*)
+    `)
+    .eq('user_id', userId)
+    .eq('is_active', true);
+    
+  return { data, error };
+};
+
+export const updateSessionActivity = async (sessionId: string) => {
+  const { data, error } = await supabase
+    .from('sessions')
+    .update({ last_active_at: new Date().toISOString() })
+    .eq('id', sessionId)
+    .select()
+    .single();
+    
+  return { data, error };
+};
+
+// Transcript functions
+export const saveTranscript = async (userId: string, roomId: string, storyText: string) => {
+  const { data, error } = await supabase
+    .from('transcripts')
+    .insert({
+      user_id: userId,
+      room_id: roomId,
+      story_text: storyText
+    })
+    .select()
+    .single();
+    
+  return { data, error };
+};
+
+export const getUserTranscripts = async (userId: string) => {
+  const { data, error } = await supabase
+    .from('transcripts')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+    
   return { data, error };
 };
