@@ -44,8 +44,14 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => 
       if (isLogin) {
         const { data, profile, error } = await signInUser(formData.email, formData.password);
         
-        if (error) throw error;
-        if (!data?.user) throw new Error('Login failed. Please try again.');
+        if (error) {
+          console.error('Login error:', error);
+          throw new Error(error.message || 'Login failed. Please try again.');
+        }
+        
+        if (!data?.user) {
+          throw new Error('Login failed. Please try again.');
+        }
 
         // Update app state with user and profile data
         setUser({
@@ -61,16 +67,28 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => 
           throw new Error(`Please wait ${cooldown} seconds before trying again`);
         }
 
+        // Validate username
+        if (!formData.username || formData.username.length < 3) {
+          throw new Error('Username must be at least 3 characters long');
+        }
+
         const { data, profile, error } = await signUpUser(formData.email, formData.password, formData.username);
         
         if (error) {
-          if (error.message.includes('rate_limit')) {
+          console.error('Signup error:', error);
+          if (error.message.includes('rate_limit') || error.message.includes('rate limit')) {
             setCooldown(10);
+            throw new Error('Too many requests. Please wait before trying again.');
           }
-          throw error;
+          if (error.message.includes('already registered') || error.message.includes('already exists')) {
+            throw new Error('An account with this email already exists. Please try logging in instead.');
+          }
+          throw new Error(error.message || 'Account creation failed. Please try again.');
         }
         
-        if (!data?.user) throw new Error('User creation failed. Please try again.');
+        if (!data?.user) {
+          throw new Error('Account creation failed. Please try again.');
+        }
 
         // Update app state with user and profile data
         setUser({
@@ -85,7 +103,8 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => 
       
       onSuccess();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      console.error('Auth error:', err);
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
     } finally {
       setIsLoading(false);
     }
@@ -145,11 +164,13 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => 
             />
             
             {error && (
-              <div className="text-red-500 text-sm py-2">{error}</div>
+              <div className="text-red-500 text-sm py-2 bg-red-500/10 border border-red-500/20 rounded px-3">
+                {error}
+              </div>
             )}
 
             {cooldown > 0 && !isLogin && (
-              <div className="text-yellow-500 text-sm py-2">
+              <div className="text-yellow-500 text-sm py-2 bg-yellow-500/10 border border-yellow-500/20 rounded px-3">
                 Please wait {cooldown} seconds before trying again
               </div>
             )}
@@ -168,7 +189,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => 
             <div className="text-center pt-2">
               <button
                 type="button"
-                onClick={() => setIsLogin(!isLogin)}
+                onClick={() => {
+                  setIsLogin(!isLogin);
+                  setError(null);
+                  setFormData({ email: '', password: '', username: '' });
+                }}
                 className="text-green-500 hover:text-green-400 text-sm"
               >
                 {isLogin ? 'Need an account? Sign up' : 'Already have an account? Login'}

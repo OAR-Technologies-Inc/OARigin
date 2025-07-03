@@ -11,76 +11,119 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Authentication functions
 export const signUpUser = async (email: string, password: string, username: string) => {
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      data: {
-        username,
-      },
-    },
-  });
-  
-  if (error) return { data: null, profile: null, error };
-  
-  if (!data?.user) return { data: null, profile: null, error: new Error('User creation failed') };
-
-  // Create profile after successful signup
-  let profile = null;
   try {
-    const { data: newProfile, error: profileError } = await supabase
-      .from('profiles')
-      .insert([
-        {
-          id: data.user.id,
+    // First, sign up the user
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
           username,
-          avatar_url: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${username}`,
         },
-      ])
-      .select()
-      .single();
+      },
+    });
     
-    if (profileError) {
-      console.error('Profile creation error:', profileError);
-    } else {
-      profile = newProfile;
+    if (error) {
+      console.error('Signup error:', error);
+      return { data: null, profile: null, error };
     }
+    
+    if (!data?.user) {
+      return { data: null, profile: null, error: new Error('User creation failed') };
+    }
+
+    // Wait a moment for the auth user to be fully created
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Create profile after successful signup
+    let profile = null;
+    try {
+      const { data: newProfile, error: profileError } = await supabase
+        .from('profiles')
+        .insert([
+          {
+            id: data.user.id,
+            username,
+            avatar_url: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${username}`,
+          },
+        ])
+        .select()
+        .single();
+      
+      if (profileError) {
+        console.error('Profile creation error:', profileError);
+        // Don't fail the entire signup if profile creation fails
+        // The user can still be authenticated
+      } else {
+        profile = newProfile;
+      }
+    } catch (err) {
+      console.error('Profile creation failed:', err);
+      // Don't fail the entire signup if profile creation fails
+    }
+    
+    return { data, profile, error: null };
   } catch (err) {
-    console.error('Profile creation failed:', err);
+    console.error('Unexpected signup error:', err);
+    return { data: null, profile: null, error: err instanceof Error ? err : new Error('Signup failed') };
   }
-  
-  return { data, profile, error: null };
 };
 
 export const signInUser = async (email: string, password: string) => {
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
-  
-  if (error) return { data: null, profile: null, error };
-
-  if (!data?.user) return { data: null, profile: null, error: new Error('Login failed') };
-
-  // Get user profile
-  let profile = null;
   try {
-    const { data: userProfile, error: profileError } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', data.user.id)
-      .single();
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
     
-    if (profileError) {
-      console.error('Profile fetch error:', profileError);
-    } else {
-      profile = userProfile;
+    if (error) {
+      console.error('Signin error:', error);
+      return { data: null, profile: null, error };
     }
-  } catch (err) {
-    console.error('Profile fetch failed:', err);
-  }
 
-  return { data, profile, error: null };
+    if (!data?.user) {
+      return { data: null, profile: null, error: new Error('Login failed') };
+    }
+
+    // Get user profile
+    let profile = null;
+    try {
+      const { data: userProfile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', data.user.id)
+        .single();
+      
+      if (profileError) {
+        console.error('Profile fetch error:', profileError);
+        // If profile doesn't exist, try to create it
+        if (profileError.code === 'PGRST116') {
+          const username = data.user.email?.split('@')[0] || 'user';
+          const { data: newProfile } = await supabase
+            .from('profiles')
+            .insert([
+              {
+                id: data.user.id,
+                username,
+                avatar_url: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${username}`,
+              },
+            ])
+            .select()
+            .single();
+          profile = newProfile;
+        }
+      } else {
+        profile = userProfile;
+      }
+    } catch (err) {
+      console.error('Profile fetch failed:', err);
+    }
+
+    return { data, profile, error: null };
+  } catch (err) {
+    console.error('Unexpected signin error:', err);
+    return { data: null, profile: null, error: err instanceof Error ? err : new Error('Login failed') };
+  }
 };
 
 export const signOutUser = async () => {
