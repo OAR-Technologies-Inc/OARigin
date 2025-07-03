@@ -15,7 +15,11 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: true
+    detectSessionInUrl: true,
+    // Fix for local development - disable email confirmation for dev
+    ...(import.meta.env.DEV && {
+      flowType: 'pkce'
+    })
   }
 });
 
@@ -43,27 +47,40 @@ export const signUpUser = async (email: string, password: string, username: stri
       throw new Error('Username must be at least 3 characters long');
     }
 
+    // Clean username
+    const cleanUsername = username.toLowerCase().replace(/[^a-z0-9_]/g, '').substring(0, 20);
+    if (cleanUsername.length < 3) {
+      throw new Error('Username must contain at least 3 valid characters (letters, numbers, underscore)');
+    }
+
     // Check if username is already taken
     const { data: existingProfile } = await supabase
       .from('profiles')
       .select('username')
-      .eq('username', username)
+      .eq('username', cleanUsername)
       .single();
     
     if (existingProfile) {
       throw new Error('Username is already taken. Please choose a different one.');
     }
 
-    // Sign up the user
-    const { data, error } = await supabase.auth.signUp({
+    // Sign up the user with email confirmation disabled in dev
+    const signUpOptions: any = {
       email,
       password,
       options: {
         data: {
-          username,
+          username: cleanUsername,
         },
       },
-    });
+    };
+
+    // In development, disable email confirmation
+    if (import.meta.env.DEV) {
+      signUpOptions.options.emailRedirectTo = window.location.origin;
+    }
+
+    const { data, error } = await supabase.auth.signUp(signUpOptions);
     
     if (error) {
       console.error('❌ Signup error:', error);
@@ -88,55 +105,67 @@ export const signUpUser = async (email: string, password: string, username: stri
 
     console.log('✅ User created successfully:', data.user.id);
 
-    // The profile should be created automatically by the trigger
-    // But let's verify it exists
-    let profile = null;
-    let retries = 3;
-    
-    while (retries > 0 && !profile) {
-      await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms
+    // In development, the user should be automatically confirmed
+    // In production, they'll need to check their email
+    if (import.meta.env.DEV || data.user.email_confirmed_at) {
+      // The profile should be created automatically by the trigger
+      // But let's verify it exists
+      let profile = null;
+      let retries = 5;
       
-      const { data: userProfile, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', data.user.id)
-        .single();
-      
-      if (!profileError && userProfile) {
-        profile = userProfile;
-        console.log('✅ Profile found:', profile.username);
-        break;
+      while (retries > 0 && !profile) {
+        await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms
+        
+        const { data: userProfile, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', data.user.id)
+          .single();
+        
+        if (!profileError && userProfile) {
+          profile = userProfile;
+          console.log('✅ Profile found:', profile.username);
+          break;
+        }
+        
+        retries--;
+        console.log(`⏳ Profile not found, retrying... (${retries} attempts left)`);
       }
-      
-      retries--;
-      console.log(`⏳ Profile not found, retrying... (${retries} attempts left)`);
-    }
 
-    // If profile still doesn't exist, create it manually
-    if (!profile) {
-      console.log('⚠️ Creating profile manually...');
-      const { data: newProfile, error: profileError } = await supabase
-        .from('profiles')
-        .insert([
-          {
-            id: data.user.id,
-            username,
-            avatar_url: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${username}`,
-          },
-        ])
-        .select()
-        .single();
-      
-      if (profileError) {
-        console.error('❌ Manual profile creation failed:', profileError);
-        // Don't fail the signup, user can still authenticate
-      } else {
-        profile = newProfile;
-        console.log('✅ Profile created manually');
+      // If profile still doesn't exist, create it manually
+      if (!profile) {
+        console.log('⚠️ Creating profile manually...');
+        const { data: newProfile, error: profileError } = await supabase
+          .from('profiles')
+          .insert([
+            {
+              id: data.user.id,
+              username: cleanUsername,
+              avatar_url: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${cleanUsername}`,
+            },
+          ])
+          .select()
+          .single();
+        
+        if (profileError) {
+          console.error('❌ Manual profile creation failed:', profileError);
+          // Don't fail the signup, user can still authenticate
+        } else {
+          profile = newProfile;
+          console.log('✅ Profile created manually');
+        }
       }
+      
+      return { data, profile, error: null };
+    } else {
+      // User needs to confirm email
+      console.log('📧 Email confirmation required');
+      return { 
+        data, 
+        profile: null, 
+        error: new Error('Please check your email and click the confirmation link to complete your account setup.') 
+      };
     }
-    
-    return { data, profile, error: null };
     
   } catch (err) {
     console.error('❌ Signup error:', err);
@@ -166,6 +195,9 @@ export const signInUser = async (email: string, password: string) => {
       if (error.message.includes('rate_limit')) {
         throw new Error('Too many login attempts. Please wait a moment before trying again.');
       }
+      if (error.message.includes('email_not_confirmed')) {
+        throw new Error('Please check your email and click the confirmation link before logging in.');
+      }
       
       throw new Error(error.message || 'Login failed');
     }
@@ -192,13 +224,15 @@ export const signInUser = async (email: string, password: string) => {
         if (profileError.code === 'PGRST116') {
           console.log('📝 Creating missing profile...');
           const username = data.user.email?.split('@')[0] || 'user';
+          const cleanUsername = username.toLowerCase().replace(/[^a-z0-9_]/g, '').substring(0, 20);
+          
           const { data: newProfile } = await supabase
             .from('profiles')
             .insert([
               {
                 id: data.user.id,
-                username,
-                avatar_url: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${username}`,
+                username: cleanUsername,
+                avatar_url: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${cleanUsername}`,
               },
             ])
             .select()
@@ -280,7 +314,8 @@ export const createGameRoom = async (hostId: string, genre: string, isPublic: bo
       genre_tag: genre,
       host_id: hostId,
       is_public: isPublic,
-      status: 'open'
+      status: 'open',
+      game_mode: 'free_text'
     })
     .select()
     .single();

@@ -17,6 +17,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => 
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
   
   const [formData, setFormData] = useState({
@@ -39,6 +40,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => 
   const switchMode = () => {
     setIsLogin(!isLogin);
     setError(null);
+    setSuccess(null);
     setFormData({ email: '', password: '', username: '' });
     setCooldown(0);
   };
@@ -46,6 +48,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSuccess(null);
     setIsLoading(true);
     
     try {
@@ -72,6 +75,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => 
         });
         setAuthenticated(true);
         console.log('✅ Login successful');
+        onSuccess();
       } else {
         if (cooldown > 0) {
           throw new Error(`Please wait ${cooldown} seconds before trying again`);
@@ -100,6 +104,12 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => 
             setCooldown(10);
           }
           
+          // Check if it's an email confirmation message
+          if (error.message.includes('check your email')) {
+            setSuccess(error.message);
+            return;
+          }
+          
           throw error;
         }
         
@@ -107,19 +117,25 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => 
           throw new Error('Account creation failed. Please try again.');
         }
 
-        // Update app state with user and profile data
-        setUser({
-          id: data.user.id,
-          username: profile?.username || formData.username,
-          avatar: profile?.avatar_url || `https://api.dicebear.com/7.x/pixel-art/svg?seed=${formData.username}`,
-          oarWalletLinked: false,
-          status: 'alive'
-        });
-        setAuthenticated(true);
-        console.log('✅ Signup successful');
+        // In development or if email is confirmed, proceed with login
+        if (import.meta.env.DEV || data.user.email_confirmed_at) {
+          // Update app state with user and profile data
+          setUser({
+            id: data.user.id,
+            username: profile?.username || formData.username,
+            avatar: profile?.avatar_url || `https://api.dicebear.com/7.x/pixel-art/svg?seed=${formData.username}`,
+            oarWalletLinked: false,
+            status: 'alive'
+          });
+          setAuthenticated(true);
+          console.log('✅ Signup successful');
+          onSuccess();
+        } else {
+          // Show success message for email confirmation
+          setSuccess('Account created! Please check your email and click the confirmation link to complete your registration.');
+        }
       }
       
-      onSuccess();
     } catch (err) {
       console.error('Auth error:', err);
       const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';
@@ -154,9 +170,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => 
                 type="text"
                 value={formData.username}
                 onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                placeholder="Choose a username"
+                placeholder="Choose a username (letters, numbers, underscore only)"
                 required
                 minLength={3}
+                maxLength={20}
+                pattern="[a-zA-Z0-9_]+"
                 fullWidth
               />
             )}
@@ -176,7 +194,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => 
               type="password"
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              placeholder="Enter your password"
+              placeholder="Enter your password (min 6 characters)"
               required
               minLength={6}
               fullWidth
@@ -185,6 +203,12 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => 
             {error && (
               <div className="text-red-500 text-sm py-2 bg-red-500/10 border border-red-500/20 rounded px-3">
                 {error}
+              </div>
+            )}
+
+            {success && (
+              <div className="text-green-500 text-sm py-2 bg-green-500/10 border border-green-500/20 rounded px-3">
+                {success}
               </div>
             )}
 
@@ -214,6 +238,12 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => 
                 {isLogin ? 'Need an account? Sign up' : 'Already have an account? Login'}
               </button>
             </div>
+
+            {import.meta.env.DEV && (
+              <div className="text-xs text-gray-500 text-center pt-2">
+                Development mode: Email confirmation disabled
+              </div>
+            )}
           </form>
         </div>
       </Card>
