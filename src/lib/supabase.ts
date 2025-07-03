@@ -32,21 +32,44 @@ export const signUpUser = async (email: string, password: string, username: stri
       return { data: null, profile: null, error: new Error('User creation failed') };
     }
 
-    // Wait a moment for the auth user to be fully created
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Wait for the auth user to be fully created
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     // Create profile after successful signup
     let profile = null;
     try {
+      // First, try to create the user record in the users table if it doesn't exist
+      const { error: userError } = await supabase
+        .from('users')
+        .upsert([
+          {
+            id: data.user.id,
+            email: data.user.email,
+            data_privacy_preferences: {},
+          },
+        ], { 
+          onConflict: 'id',
+          ignoreDuplicates: true 
+        });
+
+      if (userError) {
+        console.warn('User record creation warning:', userError);
+        // Don't fail if user record already exists or can't be created
+      }
+
+      // Then create the profile
       const { data: newProfile, error: profileError } = await supabase
         .from('profiles')
-        .insert([
+        .upsert([
           {
             id: data.user.id,
             username,
             avatar_url: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${username}`,
           },
-        ])
+        ], { 
+          onConflict: 'id',
+          ignoreDuplicates: false 
+        })
         .select()
         .single();
       
@@ -54,12 +77,26 @@ export const signUpUser = async (email: string, password: string, username: stri
         console.error('Profile creation error:', profileError);
         // Don't fail the entire signup if profile creation fails
         // The user can still be authenticated
+        profile = {
+          id: data.user.id,
+          username,
+          avatar_url: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${username}`,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
       } else {
         profile = newProfile;
       }
     } catch (err) {
       console.error('Profile creation failed:', err);
-      // Don't fail the entire signup if profile creation fails
+      // Create a fallback profile object
+      profile = {
+        id: data.user.id,
+        username,
+        avatar_url: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${username}`,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
     }
     
     return { data, profile, error: null };
@@ -98,25 +135,59 @@ export const signInUser = async (email: string, password: string) => {
         console.error('Profile fetch error:', profileError);
         // If profile doesn't exist, try to create it
         if (profileError.code === 'PGRST116') {
-          const username = data.user.email?.split('@')[0] || 'user';
+          const username = data.user.user_metadata?.username || data.user.email?.split('@')[0] || 'user';
+          
+          // Try to create user record first
+          await supabase
+            .from('users')
+            .upsert([
+              {
+                id: data.user.id,
+                email: data.user.email,
+                data_privacy_preferences: {},
+              },
+            ], { 
+              onConflict: 'id',
+              ignoreDuplicates: true 
+            });
+
+          // Then create profile
           const { data: newProfile } = await supabase
             .from('profiles')
-            .insert([
+            .upsert([
               {
                 id: data.user.id,
                 username,
                 avatar_url: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${username}`,
               },
-            ])
+            ], { 
+              onConflict: 'id',
+              ignoreDuplicates: false 
+            })
             .select()
             .single();
-          profile = newProfile;
+          profile = newProfile || {
+            id: data.user.id,
+            username,
+            avatar_url: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${username}`,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
         }
       } else {
         profile = userProfile;
       }
     } catch (err) {
       console.error('Profile fetch failed:', err);
+      // Create fallback profile
+      const username = data.user.user_metadata?.username || data.user.email?.split('@')[0] || 'user';
+      profile = {
+        id: data.user.id,
+        username,
+        avatar_url: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${username}`,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
     }
 
     return { data, profile, error: null };
