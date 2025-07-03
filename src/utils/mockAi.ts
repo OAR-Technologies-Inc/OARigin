@@ -22,7 +22,16 @@ const checkForDeath = (response: string): boolean => {
     '[PLAYER_DEATH]',
     'succumb to your wounds',
     'breathe your last breath',
-    'your tale comes to a tragic end'
+    'your tale comes to a tragic end',
+    'fate is sealed',
+    'darkness claims',
+    'final breath',
+    'life fades',
+    'soul departs',
+    'embrace of death',
+    'plunges into the shadows',
+    'sacrifice to',
+    'claims another soul'
   ];
   return deathPhrases.some(phrase => response.toLowerCase().includes(phrase));
 };
@@ -191,9 +200,15 @@ export const generateStoryContinuation = async ({
     console.log('response:', response);
     console.log('aiResponse:', aiResponse);
 
+    // Check for death BEFORE cleaning the response
+    const playerDied = checkForDeath(aiResponse);
+    console.log('----Death Detection----');
+    console.log('playerDied:', playerDied);
+    console.log('currentPlayer:', currentPlayer);
+
     return {
       text: cleanResponse(aiResponse, gameMode),
-      playerDied: checkForDeath(aiResponse)
+      playerDied
     };
   } catch (error: any) {
     console.error('Story continuation error:', {
