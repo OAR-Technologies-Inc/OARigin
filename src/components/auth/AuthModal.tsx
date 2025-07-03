@@ -34,6 +34,14 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => 
     }
     return () => clearInterval(timer);
   }, [cooldown]);
+
+  // Reset form when switching modes
+  const switchMode = () => {
+    setIsLogin(!isLogin);
+    setError(null);
+    setFormData({ email: '', password: '', username: '' });
+    setCooldown(0);
+  };
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,11 +50,12 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => 
     
     try {
       if (isLogin) {
+        console.log('🔐 Attempting login...');
         const { data, profile, error } = await signInUser(formData.email, formData.password);
         
         if (error) {
           console.error('Login error:', error);
-          throw new Error(error.message || 'Login failed. Please try again.');
+          throw error;
         }
         
         if (!data?.user) {
@@ -62,28 +71,36 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => 
           status: 'alive'
         });
         setAuthenticated(true);
+        console.log('✅ Login successful');
       } else {
         if (cooldown > 0) {
           throw new Error(`Please wait ${cooldown} seconds before trying again`);
         }
 
-        // Validate username
+        // Validate signup inputs
         if (!formData.username || formData.username.length < 3) {
           throw new Error('Username must be at least 3 characters long');
         }
 
+        if (!formData.email || !formData.password) {
+          throw new Error('Email and password are required');
+        }
+
+        if (formData.password.length < 6) {
+          throw new Error('Password must be at least 6 characters long');
+        }
+
+        console.log('📝 Attempting signup...');
         const { data, profile, error } = await signUpUser(formData.email, formData.password, formData.username);
         
         if (error) {
           console.error('Signup error:', error);
+          
           if (error.message.includes('rate_limit') || error.message.includes('rate limit')) {
             setCooldown(10);
-            throw new Error('Too many requests. Please wait before trying again.');
           }
-          if (error.message.includes('already registered') || error.message.includes('already exists')) {
-            throw new Error('An account with this email already exists. Please try logging in instead.');
-          }
-          throw new Error(error.message || 'Account creation failed. Please try again.');
+          
+          throw error;
         }
         
         if (!data?.user) {
@@ -93,18 +110,20 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => 
         // Update app state with user and profile data
         setUser({
           id: data.user.id,
-          username: formData.username,
+          username: profile?.username || formData.username,
           avatar: profile?.avatar_url || `https://api.dicebear.com/7.x/pixel-art/svg?seed=${formData.username}`,
           oarWalletLinked: false,
           status: 'alive'
         });
         setAuthenticated(true);
+        console.log('✅ Signup successful');
       }
       
       onSuccess();
     } catch (err) {
       console.error('Auth error:', err);
-      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
+      const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -189,11 +208,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => 
             <div className="text-center pt-2">
               <button
                 type="button"
-                onClick={() => {
-                  setIsLogin(!isLogin);
-                  setError(null);
-                  setFormData({ email: '', password: '', username: '' });
-                }}
+                onClick={switchMode}
                 className="text-green-500 hover:text-green-400 text-sm"
               >
                 {isLogin ? 'Need an account? Sign up' : 'Already have an account? Login'}

@@ -3,16 +3,58 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+console.log('🔧 Supabase Config Check:');
+console.log('URL:', supabaseUrl ? '✅ Set' : '❌ Missing');
+console.log('Key:', supabaseAnonKey ? '✅ Set' : '❌ Missing');
+
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables');
+  throw new Error('Missing Supabase environment variables. Check your .env file.');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: true
+  }
+});
+
+// Test connection on initialization
+supabase.from('profiles').select('count').limit(1)
+  .then(({ error }) => {
+    if (error) {
+      console.error('❌ Supabase connection failed:', error.message);
+    } else {
+      console.log('✅ Supabase connected successfully');
+    }
+  });
 
 // Authentication functions
 export const signUpUser = async (email: string, password: string, username: string) => {
+  console.log('🔐 Attempting signup for:', email);
+  
   try {
-    // First, sign up the user
+    // Validate inputs
+    if (!email || !password || !username) {
+      throw new Error('Email, password, and username are required');
+    }
+    
+    if (username.length < 3) {
+      throw new Error('Username must be at least 3 characters long');
+    }
+
+    // Check if username is already taken
+    const { data: existingProfile } = await supabase
+      .from('profiles')
+      .select('username')
+      .eq('username', username)
+      .single();
+    
+    if (existingProfile) {
+      throw new Error('Username is already taken. Please choose a different one.');
+    }
+
+    // Sign up the user
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -24,20 +66,55 @@ export const signUpUser = async (email: string, password: string, username: stri
     });
     
     if (error) {
-      console.error('Signup error:', error);
-      return { data: null, profile: null, error };
+      console.error('❌ Signup error:', error);
+      
+      // Handle specific error cases
+      if (error.message.includes('already registered')) {
+        throw new Error('An account with this email already exists. Please try logging in instead.');
+      }
+      if (error.message.includes('rate_limit') || error.message.includes('rate limit')) {
+        throw new Error('Too many requests. Please wait a moment before trying again.');
+      }
+      if (error.message.includes('invalid_credentials')) {
+        throw new Error('Invalid email or password format.');
+      }
+      
+      throw new Error(error.message || 'Account creation failed');
     }
     
     if (!data?.user) {
-      return { data: null, profile: null, error: new Error('User creation failed') };
+      throw new Error('Account creation failed. Please try again.');
     }
 
-    // Wait a moment for the auth user to be fully created
-    await new Promise(resolve => setTimeout(resolve, 100));
+    console.log('✅ User created successfully:', data.user.id);
 
-    // Create profile after successful signup
+    // The profile should be created automatically by the trigger
+    // But let's verify it exists
     let profile = null;
-    try {
+    let retries = 3;
+    
+    while (retries > 0 && !profile) {
+      await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms
+      
+      const { data: userProfile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', data.user.id)
+        .single();
+      
+      if (!profileError && userProfile) {
+        profile = userProfile;
+        console.log('✅ Profile found:', profile.username);
+        break;
+      }
+      
+      retries--;
+      console.log(`⏳ Profile not found, retrying... (${retries} attempts left)`);
+    }
+
+    // If profile still doesn't exist, create it manually
+    if (!profile) {
+      console.log('⚠️ Creating profile manually...');
       const { data: newProfile, error: profileError } = await supabase
         .from('profiles')
         .insert([
@@ -51,25 +128,29 @@ export const signUpUser = async (email: string, password: string, username: stri
         .single();
       
       if (profileError) {
-        console.error('Profile creation error:', profileError);
-        // Don't fail the entire signup if profile creation fails
-        // The user can still be authenticated
+        console.error('❌ Manual profile creation failed:', profileError);
+        // Don't fail the signup, user can still authenticate
       } else {
         profile = newProfile;
+        console.log('✅ Profile created manually');
       }
-    } catch (err) {
-      console.error('Profile creation failed:', err);
-      // Don't fail the entire signup if profile creation fails
     }
     
     return { data, profile, error: null };
+    
   } catch (err) {
-    console.error('Unexpected signup error:', err);
-    return { data: null, profile: null, error: err instanceof Error ? err : new Error('Signup failed') };
+    console.error('❌ Signup error:', err);
+    return { 
+      data: null, 
+      profile: null, 
+      error: err instanceof Error ? err : new Error('Signup failed') 
+    };
   }
 };
 
 export const signInUser = async (email: string, password: string) => {
+  console.log('🔐 Attempting signin for:', email);
+  
   try {
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
@@ -77,13 +158,23 @@ export const signInUser = async (email: string, password: string) => {
     });
     
     if (error) {
-      console.error('Signin error:', error);
-      return { data: null, profile: null, error };
+      console.error('❌ Signin error:', error);
+      
+      if (error.message.includes('invalid_credentials')) {
+        throw new Error('Invalid email or password. Please check your credentials and try again.');
+      }
+      if (error.message.includes('rate_limit')) {
+        throw new Error('Too many login attempts. Please wait a moment before trying again.');
+      }
+      
+      throw new Error(error.message || 'Login failed');
     }
 
     if (!data?.user) {
-      return { data: null, profile: null, error: new Error('Login failed') };
+      throw new Error('Login failed. Please try again.');
     }
+
+    console.log('✅ User signed in successfully:', data.user.id);
 
     // Get user profile
     let profile = null;
@@ -95,9 +186,11 @@ export const signInUser = async (email: string, password: string) => {
         .single();
       
       if (profileError) {
-        console.error('Profile fetch error:', profileError);
-        // If profile doesn't exist, try to create it
+        console.error('⚠️ Profile fetch error:', profileError);
+        
+        // If profile doesn't exist, create it
         if (profileError.code === 'PGRST116') {
+          console.log('📝 Creating missing profile...');
           const username = data.user.email?.split('@')[0] || 'user';
           const { data: newProfile } = await supabase
             .from('profiles')
@@ -111,23 +204,36 @@ export const signInUser = async (email: string, password: string) => {
             .select()
             .single();
           profile = newProfile;
+          console.log('✅ Profile created for existing user');
         }
       } else {
         profile = userProfile;
+        console.log('✅ Profile loaded:', profile.username);
       }
     } catch (err) {
-      console.error('Profile fetch failed:', err);
+      console.error('❌ Profile operation failed:', err);
     }
 
     return { data, profile, error: null };
+    
   } catch (err) {
-    console.error('Unexpected signin error:', err);
-    return { data: null, profile: null, error: err instanceof Error ? err : new Error('Login failed') };
+    console.error('❌ Signin error:', err);
+    return { 
+      data: null, 
+      profile: null, 
+      error: err instanceof Error ? err : new Error('Login failed') 
+    };
   }
 };
 
 export const signOutUser = async () => {
+  console.log('🚪 Signing out user...');
   const { error } = await supabase.auth.signOut();
+  if (error) {
+    console.error('❌ Signout error:', error);
+  } else {
+    console.log('✅ User signed out successfully');
+  }
   return { error };
 };
 
