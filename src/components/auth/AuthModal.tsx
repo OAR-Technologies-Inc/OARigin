@@ -46,17 +46,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => 
         
         if (error) {
           console.error('Login error:', error);
-          let errorMessage = 'Login failed. Please try again.';
-          
-          if (error.message.includes('Invalid login credentials')) {
-            errorMessage = 'Invalid email or password. Please check your credentials and try again.';
-          } else if (error.message.includes('Email not confirmed')) {
-            errorMessage = 'Please check your email and confirm your account before logging in.';
-          } else if (error.message.includes('Too many requests')) {
-            errorMessage = 'Too many login attempts. Please wait a moment before trying again.';
-          }
-          
-          throw new Error(errorMessage);
+          throw new Error(error.message || 'Login failed. Please try again.');
         }
         
         if (!data?.user) {
@@ -82,31 +72,18 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => 
           throw new Error('Username must be at least 3 characters long');
         }
 
-        // Validate password
-        if (!formData.password || formData.password.length < 6) {
-          throw new Error('Password must be at least 6 characters long');
-        }
-
         const { data, profile, error } = await signUpUser(formData.email, formData.password, formData.username);
         
         if (error) {
           console.error('Signup error:', error);
-          let errorMessage = 'Account creation failed. Please try again.';
-          
           if (error.message.includes('rate_limit') || error.message.includes('rate limit')) {
             setCooldown(10);
-            errorMessage = 'Too many requests. Please wait before trying again.';
-          } else if (error.message.includes('already registered') || error.message.includes('already exists')) {
-            errorMessage = 'An account with this email already exists. Please try logging in instead.';
-          } else if (error.message.includes('Password should be at least')) {
-            errorMessage = 'Password must be at least 6 characters long.';
-          } else if (error.message.includes('Unable to validate email address')) {
-            errorMessage = 'Please enter a valid email address.';
-          } else if (error.message.includes('Database error')) {
-            errorMessage = 'There was a temporary issue creating your account. Please try again in a moment.';
+            throw new Error('Too many requests. Please wait before trying again.');
           }
-          
-          throw new Error(errorMessage);
+          if (error.message.includes('already registered') || error.message.includes('already exists')) {
+            throw new Error('An account with this email already exists. Please try logging in instead.');
+          }
+          throw new Error(error.message || 'Account creation failed. Please try again.');
         }
         
         if (!data?.user) {
