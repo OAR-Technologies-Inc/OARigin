@@ -98,10 +98,8 @@ const GameScreen: React.FC = () => {
   }, [currentRoom, storySegments, loadingStory, players, setLoadingStory]);
 
   const handleMakeChoice = async (choice: string) => {
-    const currentPlayerObj = players[currentPlayerIndex];
-    const isCurrentPlayerDead = currentPlayerObj?.status === 'dead';
+    const isCurrentPlayerDead = players[currentPlayerIndex]?.status === 'dead';
     const isUserDead = currentUser?.id && players.find(p => p.id === currentUser.id)?.status === 'dead';
-    
     if (loadingStory || !currentRoom || tempSegment || gameState === GameState.ENDED || isCurrentPlayerDead || isUserDead) {
       console.log('----Input Blocked----');
       console.log('isCurrentPlayerDead:', isCurrentPlayerDead);
@@ -117,7 +115,7 @@ const GameScreen: React.FC = () => {
         genre: currentRoom.genreTag || 'adventure',
         players: players.map(p => p.username),
         storyLog: storySegments.map(s => s.aiResponse || s.content).filter(Boolean),
-        currentPlayer: currentPlayerObj.username,
+        currentPlayer: players[currentPlayerIndex].username,
         playerInput: choice,
         deadPlayers,
         newPlayers: [],
@@ -130,16 +128,10 @@ const GameScreen: React.FC = () => {
       console.log('----Story Continuation Response----');
       console.log('text:', text);
       console.log('playerDied:', playerDied);
-      console.log('currentPlayer:', currentPlayerObj.username);
-      console.log('currentPlayerId:', currentPlayerObj.id);
 
-      // Mark player as dead IMMEDIATELY if death is detected
-      if (playerDied && currentPlayerObj) {
-        console.log('----Marking Player Dead----');
-        console.log('Marking player dead:', currentPlayerObj.id, currentPlayerObj.username);
-        markPlayerDead(currentPlayerObj.id);
+      if (playerDied) {
+        markPlayerDead(players[currentPlayerIndex].id);
       }
-
       if (text.includes('[GAME_ENDED]')) {
         setGameState(GameState.ENDED);
       }
@@ -160,7 +152,6 @@ const GameScreen: React.FC = () => {
       setTempSegment(newSegment);
       setAnimationComplete(false);
 
-      // Move to next player turn
       nextPlayerTurn();
     } catch (error) {
       console.error('Handle choice error:', error);
