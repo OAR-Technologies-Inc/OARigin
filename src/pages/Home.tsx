@@ -7,14 +7,15 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import AuthModal from '../components/auth/AuthModal';
 import { useGameStore } from '../store';
-import { GameGenre } from '../types';
+import { GameGenre, GameMode, GameState, RoomStatus } from '../types';
+import { supabase } from '../lib/supabase';
 
 const Home: React.FC = () => {
   const navigate = useNavigate();
   const {
     isAuthenticated,
     createRoom,
-    joinRoom,
+    joinMatchmaking,
   } = useGameStore();
 
   const [authAction, setAuthAction] = useState<(() => Promise<void>) | null>(null);
@@ -60,7 +61,62 @@ const Home: React.FC = () => {
         if (!currentUser) throw new Error('No user available');
 
         const normalizedCode = roomCode.trim().toUpperCase();
-        await joinRoom(currentUser.id, normalizedCode);
+
+        const { data: room, error } = await supabase
+          .from('rooms')
+          .select('*')
+          .eq('code', normalizedCode)
+          .single();
+
+        if (error || !room) {
+          alert('Room not found.');
+          return;
+        }
+
+        const { error: sessionError } = await supabase
+          .from('sessions')
+          .insert({
+            user_id: currentUser.id,
+            room_id: room.id,
+            is_active: true,
+          });
+
+        if (sessionError) throw sessionError;
+
+        const { data: sessions } = await supabase
+          .from('sessions')
+          .select(`user_id, profiles!inner(username, avatar_url)`) 
+          .eq('room_id', room.id)
+          .eq('is_active', true);
+
+        const players =
+          sessions?.map((s) => ({
+            id: s.user_id,
+            username: s.profiles?.username || 'Player',
+            avatar:
+              s.profiles?.avatar_url ||
+              `https://api.dicebear.com/7.x/pixel-art/svg?seed=${s.profiles?.username || 'player'}`,
+            oarWalletLinked: false,
+            status: 'alive',
+          })) || [];
+
+        useGameStore.setState({
+          currentRoom: {
+            id: room.id,
+            code: room.code,
+            status: room.status as RoomStatus,
+            currentNarrativeState: room.current_narrative_state || '',
+            genreTag: room.genre_tag as GameGenre,
+            createdAt: room.created_at,
+            hostId: room.host_id,
+            isPublic: room.is_public,
+            gameMode: (room.game_mode as GameMode) || GameMode.FREE_TEXT,
+          },
+          players,
+          isHost: room.host_id === currentUser.id,
+          gameState: GameState.LOBBY,
+        });
+
         navigate('/lobby');
       } catch (error) {
         console.error('Failed to join room:', error);
@@ -83,7 +139,7 @@ const Home: React.FC = () => {
     const action = async () => {
       try {
         setJoiningMatchmaking(true);
-        await createRoom(selectedGenre, true);
+        await joinMatchmaking(selectedGenre);
         navigate('/lobby');
       } catch (error) {
         console.error('Matchmaking failed:', error);
