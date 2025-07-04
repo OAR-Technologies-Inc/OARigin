@@ -128,6 +128,30 @@ export const useGameStore = create<GameStore>((set, get) => ({
   }),
 
   joinMatchmaking: async (genre: GameGenre) => {
+    const { currentUser } = get();
+    if (!currentUser) throw new Error('No user logged in');
+
+    const { data: rooms } = await supabase
+      .from('rooms')
+      .select('id, code')
+      .eq('is_public', true)
+      .eq('status', 'open')
+      .order('created_at');
+
+    if (rooms) {
+      for (const room of rooms) {
+        const { count } = await supabase
+          .from('sessions')
+          .select('*', { count: 'exact', head: true })
+          .eq('room_id', room.id)
+          .eq('is_active', true);
+        if ((count ?? 0) < 4) {
+          await get().joinRoom(currentUser.id, room.code);
+          return;
+        }
+      }
+    }
+
     await get().createRoom(genre, true);
   },
 
