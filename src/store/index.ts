@@ -217,27 +217,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   joinRoom: async (userId: string, roomCode: string) => {
-    // Find room by code
+    const { setRoom, setPlayers } = get();
+
+    // Look up the room by its code
     const { data: room, error } = await supabase
       .from('rooms')
       .select('*')
-      .eq('code', roomCode.toUpperCase())
-      .eq('status', 'open')
+      .eq('code', roomCode)
       .single();
 
-    if (error || !room) throw new Error('Room not found or no longer available');
-
-    const { count } = await supabase
-      .from('sessions')
-      .select('*', { count: 'exact', head: true })
-      .eq('room_id', room.id)
-      .eq('is_active', true);
-
-    if ((count ?? 0) >= 4) {
-      throw new Error('Room is full');
+    if (!room || error) {
+      throw new Error('Room not found.');
     }
 
-    // Create session for the user
+    // Insert the player into the sessions table
     const { error: sessionError } = await supabase
       .from('sessions')
       .insert({
@@ -268,21 +261,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     const isHost = room.host_id === userId;
 
-    set({
-      currentRoom: {
-        id: room.id,
-        code: room.code,
-        status: room.status as RoomStatus,
-        currentNarrativeState: room.current_narrative_state || '',
-        genreTag: room.genre_tag as GameGenre,
-        createdAt: room.created_at,
-        hostId: room.host_id,
-        isPublic: room.is_public,
-        gameMode: (room.game_mode as GameMode) || GameMode.FREE_TEXT
-      },
-      players,
-      isHost,
-      gameState: GameState.LOBBY
-    });
+    const mappedRoom: Room = {
+      id: room.id,
+      code: room.code,
+      status: room.status as RoomStatus,
+      currentNarrativeState: room.current_narrative_state || '',
+      genreTag: room.genre_tag as GameGenre,
+      createdAt: room.created_at,
+      hostId: room.host_id,
+      isPublic: room.is_public,
+      gameMode: (room.game_mode as GameMode) || GameMode.FREE_TEXT
+    };
+
+    setRoom(mappedRoom);
+    setPlayers(players);
+    set({ isHost, gameState: GameState.LOBBY });
   }
 }));
