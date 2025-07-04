@@ -5,10 +5,20 @@ import { useGameStore } from '../store';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 import { GameGenre, GameMode } from '../types';
+import { supabase } from '../lib/supabase';
 
 const LobbyScreen: React.FC = () => {
   const navigate = useNavigate();
-  const { currentRoom, players, isHost, startGame, setRoom } = useGameStore();
+  const {
+    currentRoom,
+    players,
+    isHost,
+    startGame,
+    setRoom,
+    setPlayers,
+    setPresenceChannel,
+    currentUser
+  } = useGameStore();
   const [countdown, setCountdown] = useState<number | null>(null);
   const [showShareSuccess, setShowShareSuccess] = useState(false);
 
@@ -18,6 +28,47 @@ const LobbyScreen: React.FC = () => {
       return;
     }
   }, [currentRoom, navigate]);
+
+  useEffect(() => {
+    if (!currentRoom || !currentUser) return;
+
+    const fetchPlayers = async () => {
+      const { data: sessions } = await supabase
+        .from('sessions')
+        .select(
+          `user_id, profiles!inner(username, avatar_url)`
+        )
+        .eq('room_id', currentRoom.id)
+        .eq('is_active', true);
+
+      const playerList = sessions?.map((s) => ({
+        id: s.user_id,
+        username: s.profiles?.username || 'Player',
+        avatar: s.profiles?.avatar_url || `https://api.dicebear.com/7.x/pixel-art/svg?seed=${s.profiles?.username || 'player'}`,
+        oarWalletLinked: false,
+        status: 'alive'
+      })) || [];
+      setPlayers(playerList);
+    };
+
+    fetchPlayers();
+
+    const channel = supabase
+      .channel(`room-${currentRoom.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'sessions', filter: `room_id=eq.${currentRoom.id}` },
+        fetchPlayers
+      );
+
+    channel.subscribe();
+    setPresenceChannel(channel);
+
+    return () => {
+      supabase.removeChannel(channel);
+      setPresenceChannel(null);
+    };
+  }, [currentRoom, currentUser, setPlayers, setPresenceChannel]);
 
   const handleGameModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (!isHost || !currentRoom) return;

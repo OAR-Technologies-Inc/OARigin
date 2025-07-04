@@ -335,9 +335,20 @@ export const joinGameRoom = async (userId: string, roomCode: string) => {
     .eq('code', roomCode)
     .eq('status', 'open')
     .single();
-    
+
   if (roomError || !room) {
     return { data: null, error: new Error('Room not found or not available') };
+  }
+
+  // Check current player count
+  const { count } = await supabase
+    .from('sessions')
+    .select('*', { count: 'exact', head: true })
+    .eq('room_id', room.id)
+    .eq('is_active', true);
+
+  if ((count ?? 0) >= 4) {
+    return { data: null, error: new Error('Room is full') };
   }
   
   // Create session for user

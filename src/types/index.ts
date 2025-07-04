@@ -56,6 +56,7 @@ export interface Room {
   genreTag: GameGenre;
   createdAt: string;
   hostId: string;
+  isPublic: boolean;
   gameMode: GameMode;
 }
 
