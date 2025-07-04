@@ -128,31 +128,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   }),
 
   joinMatchmaking: async (genre: GameGenre) => {
-    const { currentUser } = get();
-    if (!currentUser) throw new Error('No user logged in');
-
-    // Check if user is already in matchmaking
-    const { data: existing } = await supabase
-      .from('waiting_pool')
-      .select()
-      .eq('user_id', currentUser.id)
-      .in('status', ['waiting', 'matched'])
-      .limit(1);
-
-    if (existing && existing.length > 0) {
-      console.warn('User already in matchmaking queue');
-      return;
-    }
-
-    const { error } = await supabase
-      .from('waiting_pool')
-      .insert({
-        user_id: currentUser.id,
-        genre,
-        status: 'waiting'
-      });
-
-    if (error) throw error;
+    await get().createRoom(genre, true);
   },
 
   leaveMatchmaking: async () => {
@@ -207,6 +183,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         genreTag: room.genre_tag as GameGenre,
         createdAt: room.created_at,
         hostId: room.host_id,
+        isPublic: room.is_public,
         gameMode: (room.game_mode as GameMode) || GameMode.FREE_TEXT
       },
       players: [currentUser],
@@ -225,6 +202,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
       .single();
 
     if (error || !room) throw new Error('Room not found or no longer available');
+
+    const { count } = await supabase
+      .from('sessions')
+      .select('*', { count: 'exact', head: true })
+      .eq('room_id', room.id)
+      .eq('is_active', true);
+
+    if ((count ?? 0) >= 4) {
+      throw new Error('Room is full');
+    }
 
     // Create session for the user
     const { error: sessionError } = await supabase
@@ -266,6 +253,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         genreTag: room.genre_tag as GameGenre,
         createdAt: room.created_at,
         hostId: room.host_id,
+        isPublic: room.is_public,
         gameMode: (room.game_mode as GameMode) || GameMode.FREE_TEXT
       },
       players,

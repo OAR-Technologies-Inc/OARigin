@@ -5,21 +5,21 @@ import Layout from '../components/layout/Layout';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
+import AuthModal from '../components/auth/AuthModal';
 import { useGameStore } from '../store';
 import { GameGenre } from '../types';
-import { supabase } from '../lib/supabase';
 
 const Home: React.FC = () => {
   const navigate = useNavigate();
   const {
     isAuthenticated,
-    generateTempUser,
     createRoom,
     joinRoom,
-    joinMatchmaking,
   } = useGameStore();
 
-  const [username, setUsername] = useState('');
+  const [authAction, setAuthAction] = useState<(() => Promise<void>) | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
   const [roomCode, setRoomCode] = useState('');
   const [isJoining, setIsJoining] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -28,115 +28,78 @@ const Home: React.FC = () => {
   const [joiningMatchmaking, setJoiningMatchmaking] = useState(false);
 
   const handleCreateRoom = async () => {
+    const action = async () => {
+      try {
+        setIsCreating(true);
+        await createRoom(selectedGenre, isPublic);
+        navigate('/lobby');
+      } catch (error) {
+        console.error('Failed to create room:', error);
+        alert('Failed to create room. Please try again.');
+      } finally {
+        setIsCreating(false);
+      }
+    };
+
     if (!isAuthenticated) {
-      if (!username.trim()) return;
-      generateTempUser(username);
+      setAuthAction(() => action);
+      setIsAuthModalOpen(true);
+      return;
     }
 
-    try {
-      setIsCreating(true);
-      await createRoom(selectedGenre, isPublic);
-      navigate('/lobby');
-    } catch (error) {
-      console.error('Failed to create room:', error);
-      alert('Failed to create room. Please try again.');
-    } finally {
-      setIsCreating(false);
-    }
+    await action();
   };
 
   const handleJoinRoom = async () => {
     if (!roomCode.trim()) return;
 
+    const action = async () => {
+      try {
+        setIsJoining(true);
+        const { currentUser } = useGameStore.getState();
+        if (!currentUser) throw new Error('No user available');
+
+        const normalizedCode = roomCode.trim().toUpperCase();
+        await joinRoom(currentUser.id, normalizedCode);
+        navigate('/lobby');
+      } catch (error) {
+        console.error('Failed to join room:', error);
+        alert('Failed to join room. Please check the room code and try again.');
+      } finally {
+        setIsJoining(false);
+      }
+    };
+
     if (!isAuthenticated) {
-      if (!username.trim()) return;
-      generateTempUser(username);
+      setAuthAction(() => action);
+      setIsAuthModalOpen(true);
+      return;
     }
 
-    try {
-      setIsJoining(true);
-      const { currentUser } = useGameStore.getState();
-      if (!currentUser) throw new Error('No user available');
-
-      const normalizedCode = roomCode.trim().toUpperCase();
-      await joinRoom(currentUser.id, normalizedCode);
-      navigate('/lobby');
-    } catch (error) {
-      console.error('Failed to join room:', error);
-      alert('Failed to join room. Please check the room code and try again.');
-    } finally {
-      setIsJoining(false);
-    }
+    await action();
   };
 
   const handleJoinMatchmaking = async () => {
-    if (!isAuthenticated) {
-      if (!username.trim()) return;
-      generateTempUser(username);
-    }
-
-    try {
-      setJoiningMatchmaking(true);
-      await joinMatchmaking(selectedGenre);
-      
-      // Start polling for match
-      const pollInterval = setInterval(async () => {
-        const { currentUser } = useGameStore.getState();
-        if (!currentUser) {
-          clearInterval(pollInterval);
-          setJoiningMatchmaking(false);
-          return;
-        }
-
-        try {
-          // Check if user has been matched
-          const { data: waitEntry } = await supabase
-            .from('waiting_pool')
-            .select('status')
-            .eq('user_id', currentUser.id)
-            .single();
-
-          if (waitEntry?.status === 'matched') {
-            // Get the session/room info
-            const { data: session } = await supabase
-              .from('sessions')
-              .select('room_id')
-              .eq('user_id', currentUser.id)
-              .eq('is_active', true)
-              .single();
-
-            if (session?.room_id) {
-              clearInterval(pollInterval);
-              
-              // Get room details
-              const { data: room } = await supabase
-                .from('rooms')
-                .select('code')
-                .eq('id', session.room_id)
-                .single();
-
-              if (room?.code) {
-                await joinRoom(currentUser.id, room.code);
-                navigate('/lobby');
-              }
-            }
-          }
-        } catch (error) {
-          console.error('Matchmaking poll error:', error);
-        }
-      }, 2000);
-
-      // Clean up after 30 seconds
-      setTimeout(() => {
-        clearInterval(pollInterval);
+    const action = async () => {
+      try {
+        setJoiningMatchmaking(true);
+        await createRoom(selectedGenre, true);
+        navigate('/lobby');
+      } catch (error) {
+        console.error('Matchmaking failed:', error);
+        alert('Failed to join matchmaking. Please try again.');
+      } finally {
         setJoiningMatchmaking(false);
-      }, 30000);
+      }
+    };
 
-    } catch (error) {
-      console.error('Matchmaking failed:', error);
-      alert('Failed to join matchmaking. Please try again.');
-      setJoiningMatchmaking(false);
+    if (!isAuthenticated) {
+      setAuthAction(() => action);
+      setIsAuthModalOpen(true);
+      return;
     }
+
+    await action();
   };
 
   return (
@@ -161,15 +124,6 @@ const Home: React.FC = () => {
               </h2>
 
               <div className="space-y-6">
-                {!isAuthenticated && (
-                  <Input
-                    label="Choose a Username"
-                    placeholder="Enter your username"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    fullWidth
-                  />
-                )}
 
                 <div>
                   <label className="block text-purple-300 text-sm mb-1">
@@ -204,7 +158,6 @@ const Home: React.FC = () => {
                   fullWidth
                   onClick={handleCreateRoom}
                   isLoading={isCreating}
-                  disabled={!isAuthenticated && !username.trim()}
                 >
                   Create Room
                 </Button>
@@ -214,7 +167,6 @@ const Home: React.FC = () => {
                   fullWidth
                   onClick={handleJoinMatchmaking}
                   isLoading={joiningMatchmaking}
-                  disabled={!isAuthenticated && !username.trim()}
                 >
                   {joiningMatchmaking ? 'Finding Match...' : 'Join Matchmaking'}
                 </Button>
@@ -228,15 +180,6 @@ const Home: React.FC = () => {
               </h2>
 
               <div className="space-y-6">
-                {!isAuthenticated && (
-                  <Input
-                    label="Choose a Username"
-                    placeholder="Enter your username"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    fullWidth
-                  />
-                )}
 
                 <Input
                   label="Room Code"
@@ -251,7 +194,7 @@ const Home: React.FC = () => {
                   fullWidth
                   onClick={handleJoinRoom}
                   isLoading={isJoining}
-                  disabled={(!isAuthenticated && !username.trim()) || !roomCode.trim()}
+                  disabled={!roomCode.trim()}
                 >
                   Join Room
                 </Button>
@@ -260,6 +203,19 @@ const Home: React.FC = () => {
           </div>
         </div>
       </div>
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => {
+          setIsAuthModalOpen(false);
+          setAuthAction(null);
+        }}
+        onSuccess={async () => {
+          setIsAuthModalOpen(false);
+          const action = authAction;
+          setAuthAction(null);
+          if (action) await action();
+        }}
+      />
     </Layout>
   );
 };
