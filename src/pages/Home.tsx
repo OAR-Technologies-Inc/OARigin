@@ -58,8 +58,9 @@ const Home: React.FC = () => {
       setIsJoining(true);
       const { currentUser } = useGameStore.getState();
       if (!currentUser) throw new Error('No user available');
-      
-      await joinRoom(currentUser.id, roomCode);
+
+      const normalizedCode = roomCode.trim().toUpperCase();
+      await joinRoom(currentUser.id, normalizedCode);
       navigate('/lobby');
     } catch (error) {
       console.error('Failed to join room:', error);
@@ -242,7 +243,7 @@ const Home: React.FC = () => {
                   label="Room Code"
                   placeholder="Enter room code"
                   value={roomCode}
-                  onChange={(e) => setRoomCode(e.target.value)}
+                  onChange={(e) => setRoomCode(e.target.value.trim().toUpperCase())}
                   fullWidth
                 />
 
