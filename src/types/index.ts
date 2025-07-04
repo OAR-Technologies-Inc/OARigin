@@ -8,7 +8,7 @@ export enum GameGenre {
 }
 
 export enum RoomStatus {
-  LOBBY = 'open',
+  LOBBY = 'lobby',
   OPEN = 'open',
   IN_PROGRESS = 'in_progress',
   CLOSED = 'closed',

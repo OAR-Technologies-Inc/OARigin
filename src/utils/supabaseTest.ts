@@ -6,7 +6,7 @@ export const testSupabaseConnection = async () => {
   
   try {
     // Test 1: Basic connection
-    const { data, error } = await supabase.from('profiles').select('count').limit(1);
+    const { error } = await supabase.from('profiles').select('count').limit(1);
     if (error) {
       console.error('❌ Connection test failed:', error);
       return false;
@@ -18,9 +18,9 @@ export const testSupabaseConnection = async () => {
     console.log('🔐 Current session:', session ? 'Active' : 'None');
 
     // Test 3: Check RLS policies
-    const { data: policies, error: policyError } = await supabase
+    const { error: policyError } = await supabase
       .rpc('get_policies_for_table', { table_name: 'profiles' })
-      .catch(() => ({ data: null, error: 'RPC not available' }));
+      .catch(() => ({ error: 'RPC not available' }));
     
     console.log('📋 RLS Policies check:', policyError ? 'Failed' : 'Success');
 

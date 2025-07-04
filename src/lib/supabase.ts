@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import type { SignUpWithPasswordCredentials } from '@supabase/supabase-js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -65,7 +66,7 @@ export const signUpUser = async (email: string, password: string, username: stri
     }
 
     // Sign up the user with email confirmation disabled in dev
-    const signUpOptions: any = {
+    const signUpOptions: SignUpWithPasswordCredentials = {
       email,
       password,
       options: {
@@ -287,7 +288,10 @@ export const getProfile = async (userId: string) => {
   return { data, error };
 };
 
-export const updateProfile = async (userId: string, updates: any) => {
+export const updateProfile = async (
+  userId: string,
+  updates: Record<string, unknown>
+) => {
   const { data: { session }, error: sessionError } = await supabase.auth.getSession();
   if (sessionError || !session || session.user.id !== userId) {
     return { data: null, error: new Error('Unauthorized access') };

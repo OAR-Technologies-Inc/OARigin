@@ -13,7 +13,7 @@ interface PromptOptions {
   sessionGoal?: 'short' | 'medium' | 'long' | 'conclude';
   inventory?: string[];
   turnCount?: number;
-  progress?: Record<string, any>;
+  progress?: Record<string, number>;
 }
 
 export function buildNarrationPrompt({
