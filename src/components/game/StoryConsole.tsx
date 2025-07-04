@@ -34,7 +34,7 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
   animationComplete,
   setAnimationComplete,
 }) => {
-  const { currentRoom, players, currentUser } = useGameStore();
+  const { currentRoom, players } = useGameStore();
   const [freestyleInput, setFreestyleInput] = useState('');
   const [isPlayerDead, setIsPlayerDead] = useState(false);
 

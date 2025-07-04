@@ -15,7 +15,6 @@ const GameScreen: React.FC = () => {
   const {
     currentRoom,
     players,
-    newPlayers,
     currentPlayerIndex,
     storySegments,
     addStorySegment,
@@ -23,7 +22,6 @@ const GameScreen: React.FC = () => {
     loadingStory,
     setLoadingStory,
     nextPlayerTurn,
-    clearNewPlayers,
     markPlayerDead,
     updateProgress,
     setGameState,
@@ -230,7 +228,11 @@ const GameScreen: React.FC = () => {
   );
 };
 
-const parseProgressUpdates = (aiResponse: string = '', genre: string = 'adventure', progress: any): Partial<GameProgress> => {
+const parseProgressUpdates = (
+  aiResponse: string = '',
+  genre: string = 'adventure',
+  progress: GameProgress
+): Partial<GameProgress> => {
   const updates: Partial<GameProgress> = {};
   if (!aiResponse) return updates;
   const text = aiResponse.toLowerCase();

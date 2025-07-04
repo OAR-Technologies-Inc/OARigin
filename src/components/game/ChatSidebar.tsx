@@ -17,7 +17,7 @@ interface ChatSidebarProps {
 }
 
 const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onClose }) => {
-  const { currentUser, players } = useGameStore();
+  const { currentUser } = useGameStore();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -76,7 +76,6 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ isOpen, onClose }) => {
             <div className="space-y-3">
               {messages.map((message) => {
                 const isCurrentUser = message.userId === currentUser?.id;
-                const sender = players.find(p => p.id === message.userId);
                 
                 return (
                   <div 

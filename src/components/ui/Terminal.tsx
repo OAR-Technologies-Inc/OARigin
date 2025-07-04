@@ -5,7 +5,6 @@ interface TerminalProps {
   lines: string[];
   animatedLine: string;
   className?: string;
-  typing?: boolean;
   typingSpeed?: number; // ms per character
   blinkCursor?: boolean;
   onTypingComplete?: () => void;
@@ -15,7 +14,6 @@ const Terminal: React.FC<TerminalProps> = ({
   lines,
   animatedLine = '', // Provide default empty string
   className,
-  typing = true,
   typingSpeed = 30,
   blinkCursor = true,
   onTypingComplete

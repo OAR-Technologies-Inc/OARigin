@@ -50,15 +50,22 @@ const fetchWithRetry = async (url: string, options: RequestInit, retries: number
       }
 
       return await response.json();
-    } catch (error: any) {
+    } catch (error: unknown) {
       clearTimeout(timeoutId);
-      console.error(`Attempt ${attempt} failed:`, {
-        message: error.message,
-        name: error.name,
-        stack: error.stack,
-      });
-      if (attempt === retries || error.name !== 'AbortError') {
-        throw error;
+      if (error instanceof Error) {
+        console.error(`Attempt ${attempt} failed:`, {
+          message: error.message,
+          name: error.name,
+          stack: error.stack,
+        });
+        if (attempt === retries || error.name !== 'AbortError') {
+          throw error;
+        }
+      } else {
+        console.error(`Attempt ${attempt} failed with unknown error`);
+        if (attempt === retries) {
+          throw error;
+        }
       }
     }
   }
@@ -116,13 +123,17 @@ export const generateStoryBeginning = async (
     );
 
     return cleanResponse(response.text, gameMode);
-  } catch (error: any) {
-    console.error('Story beginning error:', {
-      message: error.message,
-      name: error.name,
-      stack: error.stack,
-      prompt,
-    });
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      console.error('Story beginning error:', {
+        message: error.message,
+        name: error.name,
+        stack: error.stack,
+        prompt,
+      });
+    } else {
+      console.error('Story beginning error: unknown error');
+    }
     return getFallbackResponse();
   }
 };
@@ -195,15 +206,19 @@ export const generateStoryContinuation = async ({
       text: cleanResponse(aiResponse, gameMode),
       playerDied: checkForDeath(aiResponse)
     };
-  } catch (error: any) {
-    console.error('Story continuation error:', {
-      message: error.message,
-      name: error.name,
-      stack: error.stack,
-      prompt,
-      playerInput,
-      gameMode,
-    });
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      console.error('Story continuation error:', {
+        message: error.message,
+        name: error.name,
+        stack: error.stack,
+        prompt,
+        playerInput,
+        gameMode,
+      });
+    } else {
+      console.error('Story continuation error: unknown error');
+    }
     return {
       text: "The story pauses... [Connection error, please try again]",
       playerDied: false
