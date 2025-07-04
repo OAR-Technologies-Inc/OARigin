@@ -220,7 +220,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const { data: room, error } = await supabase
       .from('rooms')
       .select('*')
-      .eq('code', roomCode)
+      .eq('code', roomCode.toUpperCase())
       .eq('status', 'open')
       .single();
 
