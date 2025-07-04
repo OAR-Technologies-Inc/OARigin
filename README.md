@@ -13,13 +13,12 @@
    ```bash
    npm install
    ```
-2. Create a `.env` file in the project root with the following variables:
+2. Copy `.env.example` to `.env` and update it with your Supabase credentials:
    ```bash
-   VITE_SUPABASE_URL=<your-supabase-url>
-   VITE_SUPABASE_ANON_KEY=<your-supabase-anon-key>
-   # Optional: enable dev mode features
-   VITE_ENABLE_DEV_MODE=true
+   cp .env.example .env
+   # then edit .env with your values
    ```
+   Optionally set `VITE_ENABLE_DEV_MODE=true` to enable additional dev features.
 
 ## Running the app
 
