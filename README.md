@@ -18,7 +18,9 @@
    cp .env.example .env
    # then edit .env with your values
    ```
-   Optionally set `VITE_ENABLE_DEV_MODE=true` to enable additional dev features.
+   Optionally set `VITE_ENABLE_DEV_MODE=true` and add your `OPENAI_API_KEY` if
+   you want to test AI features locally. Both variables are optional for
+   development.
 
 ## Running the app
 
