@@ -15,9 +15,7 @@ const LobbyScreen: React.FC = () => {
     isHost,
     startGame,
     setRoom,
-    setPlayers,
-    setPresenceChannel,
-    currentUser
+    setPresenceChannel
   } = useGameStore();
   const [countdown, setCountdown] = useState<number | null>(null);
   const [showShareSuccess, setShowShareSuccess] = useState(false);
@@ -30,35 +28,44 @@ const LobbyScreen: React.FC = () => {
   }, [currentRoom, navigate]);
 
   useEffect(() => {
-    if (!currentRoom || !currentUser) return;
+    const roomId = currentRoom?.id;
+    if (!roomId) return;
 
     const fetchPlayers = async () => {
       const { data: sessions } = await supabase
         .from('sessions')
-        .select(
-          `user_id, profiles!inner(username, avatar_url)`
-        )
-        .eq('room_id', currentRoom.id)
+        .select(`user_id, profiles!inner(username, avatar_url)`)
+        .eq('room_id', roomId)
         .eq('is_active', true);
 
-      const playerList = sessions?.map((s) => ({
-        id: s.user_id,
-        username: s.profiles?.username || 'Player',
-        avatar: s.profiles?.avatar_url || `https://api.dicebear.com/7.x/pixel-art/svg?seed=${s.profiles?.username || 'player'}`,
-        oarWalletLinked: false,
-        status: 'alive'
-      })) || [];
-      setPlayers(playerList);
+      const playerList =
+        sessions?.map((s) => ({
+          id: s.user_id,
+          username: s.profiles?.username || 'Player',
+          avatar: s.profiles?.avatar_url || `https://api.dicebear.com/7.x/pixel-art/svg?seed=${s.profiles?.username || 'player'}`,
+          oarWalletLinked: false,
+          status: 'alive'
+        })) || [];
+      useGameStore.getState().setPlayers(playerList);
     };
 
     fetchPlayers();
 
     const channel = supabase
-      .channel(`room-${currentRoom.id}`)
+      .channel(`room-${roomId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'sessions', filter: `room_id=eq.${currentRoom.id}` },
+        { event: '*', schema: 'public', table: 'sessions', filter: `room_id=eq.${roomId}` },
         fetchPlayers
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },
+        (payload) => {
+          if (payload.new.status === 'in_progress') {
+            navigate('/game');
+          }
+        }
       );
 
     channel.subscribe();
@@ -68,7 +75,7 @@ const LobbyScreen: React.FC = () => {
       supabase.removeChannel(channel);
       setPresenceChannel(null);
     };
-  }, [currentRoom, currentUser, setPlayers, setPresenceChannel]);
+  }, [currentRoom?.id, setPresenceChannel, navigate]);
 
   const handleGameModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (!isHost || !currentRoom) return;

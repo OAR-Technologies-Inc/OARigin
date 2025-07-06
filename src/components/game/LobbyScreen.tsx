@@ -15,7 +15,6 @@ const LobbyScreen: React.FC = () => {
     isHost,
     startGame,
     setRoom,
-    setPlayers,
     currentUser,
   } = useGameStore();
   const [countdown, setCountdown] = useState<number | null>(null);
@@ -79,15 +78,14 @@ const LobbyScreen: React.FC = () => {
   };
 
   useEffect(() => {
-    if (!currentRoom || !currentUser) return;
+    const roomId = currentRoom?.id;
+    if (!roomId) return;
 
     const fetchPlayers = async () => {
       const { data: sessions } = await supabase
         .from('sessions')
-        .select(
-          `user_id, profiles!inner(username, avatar_url)`
-        )
-        .eq('room_id', currentRoom.id)
+        .select(`user_id, profiles!inner(username, avatar_url)`)
+        .eq('room_id', roomId)
         .eq('is_active', true);
 
       const playerList = sessions?.map((s) => ({
@@ -99,32 +97,26 @@ const LobbyScreen: React.FC = () => {
         oarWalletLinked: false,
         status: 'alive',
       })) || [];
-      setPlayers(playerList);
+      useGameStore.getState().setPlayers(playerList);
     };
 
     fetchPlayers();
 
     const channel = supabase
-      .channel(`room-${currentRoom.id}`)
+      .channel(`room-${roomId}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'sessions', filter: `room_id=eq.${currentRoom.id}` },
-        fetchPlayers,
+        { event: '*', schema: 'public', table: 'sessions', filter: `room_id=eq.${roomId}` },
+        fetchPlayers
       )
       .on(
         'postgres_changes',
-        { event: 'DELETE', schema: 'public', table: 'sessions', filter: `room_id=eq.${currentRoom.id}` },
-        fetchPlayers,
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${currentRoom.id}` },
+        { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },
         (payload) => {
           if (payload.new.status === 'in_progress') {
-            startGame();
             navigate('/game');
           }
-        },
+        }
       );
 
     channel.subscribe();
@@ -132,7 +124,7 @@ const LobbyScreen: React.FC = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentRoom, currentUser, navigate, setPlayers, startGame]);
+  }, [currentRoom?.id, navigate]);
 
 
   if (!Array.isArray(players) || players.length === 0) {
