@@ -1,23 +1,60 @@
-import React, { useState, useEffect } from 'react';
+// LobbyScreen.tsx
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, Copy, Play, Users } from 'lucide-react';
 import { useGameStore } from '../store';
+import { supabase } from '../lib/supabase';
+import { Clock, Copy, Play, Users } from 'lucide-react';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 import { GameGenre, GameMode } from '../types';
 
 const LobbyScreen: React.FC = () => {
   const navigate = useNavigate();
-  const { currentRoom, players, isHost, startGame, setRoom } = useGameStore();
+  const {
+    currentRoom,
+    players,
+    isHost,
+    startGame,
+    setRoom
+  } = useGameStore();
+
   const [countdown, setCountdown] = useState<number | null>(null);
   const [showShareSuccess, setShowShareSuccess] = useState(false);
 
+  // Ensure user has a room
   useEffect(() => {
     if (!currentRoom) {
       navigate('/');
-      return;
     }
   }, [currentRoom, navigate]);
+
+  // Realtime room status sync for host's game start
+  useEffect(() => {
+    if (!currentRoom?.id) return;
+
+    const channel = supabase
+      .channel('lobby-room-sync')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'rooms',
+          filter: `id=eq.${currentRoom.id}`
+        },
+        (payload) => {
+          const updatedStatus = payload.new.status;
+          if (updatedStatus === 'in_progress') {
+            navigate('/game');
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentRoom?.id, navigate]);
 
   const handleGameModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (!isHost || !currentRoom) return;

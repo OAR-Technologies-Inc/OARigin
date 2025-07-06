@@ -41,236 +41,300 @@ interface GameStore {
   leaveMatchmaking: () => Promise<void>;
   createRoom: (genre: GameGenre, isPublic: boolean) => Promise<void>;
   joinRoom: (userId: string, roomCode: string) => Promise<void>;
+  unsubscribeSessionListener: () => void;
 }
 
-export const useGameStore = create<GameStore>((set, get) => ({
-  currentUser: null,
-  isAuthenticated: false,
-  currentRoom: null,
-  players: [],
-  storySegments: [],
-  currentVotes: [],
-  gameState: GameState.LOBBY,
-  loadingStory: false,
-  currentPlayerIndex: 0,
-  presenceChannel: null,
-  deadPlayers: [],
-  progress: {},
-  isHost: false,
-  newPlayers: [],
+// Flag to prevent multiple session listener subscriptions
+let sessionSyncStarted = false;
 
-  setUser: (user) => set({ currentUser: user }),
-  setAuthenticated: (isAuth) => set({ isAuthenticated: isAuth }),
-  setRoom: (room) => set({ currentRoom: room }),
-  setPlayers: (players) => set({ players }),
-  addStorySegment: (segment) => set((state) => ({ storySegments: [...state.storySegments, segment] })),
-  addVote: (vote) => set((state) => ({ currentVotes: [...state.currentVotes, vote] })),
-  clearVotes: () => set({ currentVotes: [] }),
-  setGameState: (state) => set({ gameState: state }),
-  setLoadingStory: (loading) => set({ loadingStory: loading }),
-  setPresenceChannel: (channel) => set({ presenceChannel: channel }),
-  clearNewPlayers: () => set({ newPlayers: [] }),
+export const useGameStore = create<GameStore>((set, get) => {
+  // Initialize the session listener
+  const startSessionListener = () => {
+    if (sessionSyncStarted) return;
+    sessionSyncStarted = true;
 
-  generateTempUser: (username) => {
-    const tempUser: User = {
-      id: uuidv4(),
-      username,
-      avatar: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${username}`,
-      oarWalletLinked: false,
-      status: 'alive'
-    };
-    set({ currentUser: tempUser, isAuthenticated: true });
-  },
+    supabase
+      .channel('session-room-sync')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'sessions',
+        },
+        async (payload) => {
+          const roomId = payload.new.room_id;
+          const { currentRoom } = get();
 
-  startGame: () => set((state) => ({
-    gameState: GameState.PLAYING,
-    currentRoom: state.currentRoom
-      ? { ...state.currentRoom, status: RoomStatus.IN_PROGRESS }
-      : null,
+          if (currentRoom && currentRoom.id === roomId) {
+            const { data: sessions } = await supabase
+              .from('sessions')
+              .select(`
+                user_id,
+                profiles!inner(username, avatar_url)
+              `)
+              .eq('room_id', roomId)
+              .eq('is_active', true);
+
+            const players: User[] = sessions?.map((session) => ({
+              id: session.user_id,
+              username: session.profiles?.username || 'Player',
+              avatar:
+                session.profiles?.avatar_url ||
+                `https://api.dicebear.com/7.x/pixel-art/svg?seed=${session.profiles?.username || 'player'}`,
+              oarWalletLinked: false,
+              status: 'alive',
+            })) || [];
+
+            // Defer state update to avoid render-phase conflicts
+            setTimeout(() => {
+              set({ players });
+            }, 0);
+          }
+        }
+      )
+      .subscribe();
+  };
+
+  // Start the listener when the store is created
+  startSessionListener();
+
+  return {
+    currentUser: null,
+    isAuthenticated: false,
+    currentRoom: null,
+    players: [],
+    storySegments: [],
+    currentVotes: [],
+    gameState: GameState.LOBBY,
+    loadingStory: false,
     currentPlayerIndex: 0,
+    presenceChannel: null,
     deadPlayers: [],
-    progress: {}
-  })),
+    progress: {},
+    isHost: false,
+    newPlayers: [],
 
-  markPlayerDead: (userId) => set((state) => ({
-    deadPlayers: [...state.deadPlayers, userId],
-    players: state.players.map(p => 
-      p.id === userId ? { ...p, status: 'dead' } : p
-    )
-  })),
+    setUser: (user) => set({ currentUser: user }),
+    setAuthenticated: (isAuth) => set({ isAuthenticated: isAuth }),
+    setRoom: (room) => set({ currentRoom: room }),
+    setPlayers: (players) => set({ players }),
+    addStorySegment: (segment) => set((state) => ({ storySegments: [...state.storySegments, segment] })),
+    addVote: (vote) => set((state) => ({ currentVotes: [...state.currentVotes, vote] })),
+    clearVotes: () => set({ currentVotes: [] }),
+    setGameState: (state) => set({ gameState: state }),
+    setLoadingStory: (loading) => set({ loadingStory: loading }),
+    setPresenceChannel: (channel) => set({ presenceChannel: channel }),
+    clearNewPlayers: () => set({ newPlayers: [] }),
 
-  setProgress: (progress) => set({ progress }),
+    generateTempUser: (username) => {
+      const tempUser: User = {
+        id: uuidv4(),
+        username,
+        avatar: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${username}`,
+        oarWalletLinked: false,
+        status: 'alive',
+      };
+      set({ currentUser: tempUser, isAuthenticated: true });
+    },
 
-  updateProgress: (progress) => set((state) => ({
-    progress: { ...state.progress, ...progress }
-  })),
+    startGame: () => set((state) => ({
+      gameState: GameState.PLAYING,
+      currentRoom: state.currentRoom
+        ? { ...state.currentRoom, status: RoomStatus.IN_PROGRESS }
+        : null,
+      currentPlayerIndex: 0,
+      deadPlayers: [],
+      progress: {},
+    })),
 
-  nextPlayerTurn: () => set((state) => {
-    const alivePlayers = state.players.filter(p => p.status === 'alive');
-    if (alivePlayers.length === 0) return state;
-    
-    let nextIndex = (state.currentPlayerIndex + 1) % state.players.length;
-    
-    // Skip dead players
-    while (state.players[nextIndex]?.status === 'dead' && alivePlayers.length > 0) {
-      nextIndex = (nextIndex + 1) % state.players.length;
-    }
-    
-    return { currentPlayerIndex: nextIndex };
-  }),
+    markPlayerDead: (userId) => set((state) => ({
+      deadPlayers: [...state.deadPlayers, userId],
+      players: state.players.map((p) =>
+        p.id === userId ? { ...p, status: 'dead' } : p
+      ),
+    })),
 
-  checkGameEnd: () => set((state) => {
-    const allDead = state.players.every(p => state.deadPlayers.includes(p.id));
-    if (allDead) {
-      return { gameState: GameState.ENDED };
-    }
-    return state;
-  }),
+    setProgress: (progress) => set({ progress }),
 
-  joinMatchmaking: async (genre: GameGenre) => {
-    const { currentUser } = get();
-    if (!currentUser) throw new Error('No user logged in');
+    updateProgress: (progress) => set((state) => ({
+      progress: { ...state.progress, ...progress },
+    })),
 
-    // Check if user is already in matchmaking
-    const { data: existing } = await supabase
-      .from('waiting_pool')
-      .select()
-      .eq('user_id', currentUser.id)
-      .in('status', ['waiting', 'matched'])
-      .limit(1);
+    nextPlayerTurn: () => set((state) => {
+      const alivePlayers = state.players.filter((p) => p.status === 'alive');
+      if (alivePlayers.length === 0) return state;
 
-    if (existing && existing.length > 0) {
-      console.warn('User already in matchmaking queue');
-      return;
-    }
+      let nextIndex = (state.currentPlayerIndex + 1) % state.players.length;
 
-    const { error } = await supabase
-      .from('waiting_pool')
-      .insert({
-        user_id: currentUser.id,
-        genre,
-        status: 'waiting'
+      // Skip dead players
+      while (state.players[nextIndex]?.status === 'dead' && alivePlayers.length > 0) {
+        nextIndex = (nextIndex + 1) % state.players.length;
+      }
+
+      return { currentPlayerIndex: nextIndex };
+    }),
+
+    checkGameEnd: () => set((state) => {
+      const allDead = state.players.every((p) => state.deadPlayers.includes(p.id));
+      if (allDead) {
+        return { gameState: GameState.ENDED };
+      }
+      return state;
+    }),
+
+    joinMatchmaking: async (genre: GameGenre) => {
+      const { currentUser } = get();
+      if (!currentUser) throw new Error('No user logged in');
+
+      // Check if user is already in matchmaking
+      const { data: existing } = await supabase
+        .from('waiting_pool')
+        .select()
+        .eq('user_id', currentUser.id)
+        .in('status', ['waiting', 'matched'])
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        console.warn('User already in matchmaking queue');
+        return;
+      }
+
+      const { error } = await supabase
+        .from('waiting_pool')
+        .insert({
+          user_id: currentUser.id,
+          genre,
+          status: 'waiting',
+        });
+
+      if (error) throw error;
+    },
+
+    leaveMatchmaking: async () => {
+      const { currentUser } = get();
+      if (!currentUser) return;
+
+      await supabase
+        .from('waiting_pool')
+        .update({ status: 'left' })
+        .eq('user_id', currentUser.id)
+        .eq('status', 'waiting');
+    },
+
+    createRoom: async (genre: GameGenre, isPublic: boolean) => {
+      const { currentUser } = get();
+      if (!currentUser) throw new Error('No user logged in');
+
+      const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+      const { data: room, error } = await supabase
+        .from('rooms')
+        .insert({
+          code: roomCode,
+          genre_tag: genre,
+          status: 'open',
+          host_id: currentUser.id,
+          is_public: isPublic,
+          game_mode: GameMode.FREE_TEXT,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Create session for the host
+      const { error: sessionError } = await supabase
+        .from('sessions')
+        .insert({
+          user_id: currentUser.id,
+          room_id: room.id,
+          is_active: true,
+        });
+
+      if (sessionError) throw sessionError;
+
+      set({
+        currentRoom: {
+          id: room.id,
+          code: room.code,
+          status: room.status as RoomStatus,
+          currentNarrativeState: room.current_narrative_state || '',
+          genreTag: room.genre_tag as GameGenre,
+          createdAt: room.created_at,
+          hostId: room.host_id,
+          gameMode: (room.game_mode as GameMode) || GameMode.FREE_TEXT,
+        },
+        players: [currentUser],
+        isHost: true,
+        gameState: GameState.LOBBY,
       });
+    },
 
-    if (error) throw error;
-  },
+    joinRoom: async (userId: string, roomCode: string) => {
+      // Find room by code
+      const { data: room, error } = await supabase
+        .from('rooms')
+        .select('*')
+        .eq('code', roomCode.toUpperCase())
+        .eq('status', 'open')
+        .single();
 
-  leaveMatchmaking: async () => {
-    const { currentUser } = get();
-    if (!currentUser) return;
+      if (error || !room) throw new Error('Room not found or no longer available');
 
-    await supabase
-      .from('waiting_pool')
-      .update({ status: 'left' })
-      .eq('user_id', currentUser.id)
-      .eq('status', 'waiting');
-  },
+      // Create session for the user
+      const { error: sessionError } = await supabase
+        .from('sessions')
+        .insert({
+          user_id: userId,
+          room_id: room.id,
+          is_active: true,
+        });
 
-  createRoom: async (genre: GameGenre, isPublic: boolean) => {
-    const { currentUser } = get();
-    if (!currentUser) throw new Error('No user logged in');
+      if (sessionError) throw sessionError;
 
-    const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      // Manually fetch all players right after joining
+      const { data: updatedSessions } = await supabase
+        .from('sessions')
+        .select(`
+          user_id,
+          profiles!inner(username, avatar_url)
+        `)
+        .eq('room_id', room.id)
+        .eq('is_active', true);
 
-    const { data: room, error } = await supabase
-      .from('rooms')
-      .insert({
-        code: roomCode,
-        genre_tag: genre,
-        status: 'open',
-        host_id: currentUser.id,
-        is_public: isPublic,
-        game_mode: GameMode.FREE_TEXT
-      })
-      .select()
-      .single();
+      const updatedPlayers: User[] = updatedSessions?.map((session) => ({
+        id: session.user_id,
+        username: session.profiles?.username || 'Player',
+        avatar: session.profiles?.avatar_url || '',
+        oarWalletLinked: false,
+        status: 'alive',
+      })) || [];
 
-    if (error) throw error;
+      const isHost = room.host_id === userId;
 
-    // Create session for the host
-    const { error: sessionError } = await supabase
-      .from('sessions')
-      .insert({
-        user_id: currentUser.id,
-        room_id: room.id,
-        is_active: true
+      set({
+        currentRoom: {
+          id: room.id,
+          code: room.code,
+          status: room.status as RoomStatus,
+          currentNarrativeState: room.current_narrative_state || '',
+          genreTag: room.genre_tag as GameGenre,
+          createdAt: room.created_at,
+          hostId: room.host_id,
+          gameMode: (room.game_mode as GameMode) || GameMode.FREE_TEXT,
+        },
+        players: updatedPlayers,
+        isHost,
+        gameState: GameState.LOBBY,
       });
+    },
 
-    if (sessionError) throw sessionError;
-
-    set({
-      currentRoom: {
-        id: room.id,
-        code: room.code,
-        status: room.status as RoomStatus,
-        currentNarrativeState: room.current_narrative_state || '',
-        genreTag: room.genre_tag as GameGenre,
-        createdAt: room.created_at,
-        hostId: room.host_id,
-        gameMode: (room.game_mode as GameMode) || GameMode.FREE_TEXT
-      },
-      players: [currentUser],
-      isHost: true,
-      gameState: GameState.LOBBY
-    });
-  },
-
-  joinRoom: async (userId: string, roomCode: string) => {
-    // Find room by code
-    const { data: room, error } = await supabase
-      .from('rooms')
-      .select('*')
-      .eq('code', roomCode.toUpperCase())
-      .eq('status', 'open')
-      .single();
-
-    if (error || !room) throw new Error('Room not found or no longer available');
-
-    // Create session for the user
-    const { error: sessionError } = await supabase
-      .from('sessions')
-      .insert({
-        user_id: userId,
-        room_id: room.id,
-        is_active: true
-      });
-
-    if (sessionError) throw sessionError;
-
-    // Get all players in the room
-    const { data: sessions } = await supabase
-      .from('sessions')
-      .select(`
-        user_id,
-        profiles!inner(username, avatar_url)
-      `)
-      .eq('room_id', room.id)
-      .eq('is_active', true);
-
-    const players: User[] = sessions?.map(session => ({
-      id: session.user_id,
-      username: session.profiles?.username || 'Player',
-      avatar: session.profiles?.avatar_url || `https://api.dicebear.com/7.x/pixel-art/svg?seed=${session.profiles?.username || 'player'}`,
-      oarWalletLinked: false,
-      status: 'alive'
-    })) || [];
-
-    const isHost = room.host_id === userId;
-
-    set({
-      currentRoom: {
-        id: room.id,
-        code: room.code,
-        status: room.status as RoomStatus,
-        currentNarrativeState: room.current_narrative_state || '',
-        genreTag: room.genre_tag as GameGenre,
-        createdAt: room.created_at,
-        hostId: room.host_id,
-        gameMode: (room.game_mode as GameMode) || GameMode.FREE_TEXT
-      },
-      players,
-      isHost,
-      gameState: GameState.LOBBY
-    });
-  }
-}));
+    unsubscribeSessionListener: () => {
+      if (sessionSyncStarted) {
+        supabase.channel('session-room-sync').unsubscribe();
+        sessionSyncStarted = false;
+      }
+    },
+  };
+});
