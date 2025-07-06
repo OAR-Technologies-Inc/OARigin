@@ -5,17 +5,33 @@ import { useGameStore } from '../../store';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 import { GameGenre, GameMode } from '../../types';
+import { supabase } from '../../lib/supabase';
 
 const LobbyScreen: React.FC = () => {
   const navigate = useNavigate();
-  const { currentRoom, players, isHost, startGame, setRoom } = useGameStore();
+  const {
+    currentRoom,
+    players,
+    isHost,
+    startGame,
+    setRoom,
+    currentUser,
+  } = useGameStore();
   const [countdown, setCountdown] = useState<number | null>(null);
   const [showShareSuccess, setShowShareSuccess] = useState(false);
 
-  // Debug data to diagnose issues (remove after testing)
+
   useEffect(() => {
-    console.log('LobbyScreen Data:', { currentRoom, players, isHost });
-  }, [currentRoom, players, isHost]);
+    if (!currentUser) {
+      navigate('/');
+    }
+  }, [currentUser, navigate]);
+
+  useEffect(() => {
+    if (!currentRoom) {
+      navigate('/');
+    }
+  }, [currentRoom, navigate]);
 
   const handleGameModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (!isHost || !currentRoom) return;
@@ -30,12 +46,16 @@ const LobbyScreen: React.FC = () => {
   };
 
   const handleStartGame = () => {
-    if (!isHost) return;
+    if (!isHost || !currentRoom) return;
     setCountdown(5);
     const interval = setInterval(() => {
       setCountdown((prev) => {
         if (prev === null || prev <= 1) {
           clearInterval(interval);
+          supabase
+            .from('rooms')
+            .update({ status: 'in_progress' })
+            .eq('id', currentRoom.id);
           startGame();
           navigate('/game');
           return null;
@@ -57,10 +77,55 @@ const LobbyScreen: React.FC = () => {
     }
   };
 
-  if (!currentRoom) {
-    navigate('/');
-    return null;
-  }
+  useEffect(() => {
+    const roomId = currentRoom?.id;
+    if (!roomId) return;
+
+    const fetchPlayers = async () => {
+      const { data: sessions } = await supabase
+        .from('sessions')
+        .select(`user_id, profiles!inner(username, avatar_url)`)
+        .eq('room_id', roomId)
+        .eq('is_active', true);
+
+      const playerList = sessions?.map((s) => ({
+        id: s.user_id,
+        username: s.profiles?.username || 'Player',
+        avatar:
+          s.profiles?.avatar_url ||
+          `https://api.dicebear.com/7.x/pixel-art/svg?seed=${s.profiles?.username || 'player'}`,
+        oarWalletLinked: false,
+        status: 'alive',
+      })) || [];
+      useGameStore.getState().setPlayers(playerList);
+    };
+
+    fetchPlayers();
+
+    const channel = supabase
+      .channel(`room-${roomId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'sessions', filter: `room_id=eq.${roomId}` },
+        fetchPlayers
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },
+        (payload) => {
+          if (payload.new.status === 'in_progress') {
+            navigate('/game');
+          }
+        }
+      );
+
+    channel.subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentRoom?.id, navigate]);
+
 
   if (!Array.isArray(players) || players.length === 0) {
     return (

@@ -161,6 +161,7 @@ export const useGameStore = create<GameStore>((set, get) => {
       progress: { ...state.progress, ...progress },
     })),
 
+<<<<<<< HEAD
     nextPlayerTurn: () => set((state) => {
       const alivePlayers = state.players.filter((p) => p.status === 'alive');
       if (alivePlayers.length === 0) return state;
@@ -279,6 +280,31 @@ export const useGameStore = create<GameStore>((set, get) => {
         .eq('code', roomCode.toUpperCase())
         .eq('status', 'open')
         .single();
+=======
+    const { data: rooms } = await supabase
+      .from('rooms')
+      .select('id, code')
+      .eq('is_public', true)
+      .eq('status', 'open')
+      .order('created_at');
+
+    if (rooms) {
+      for (const room of rooms) {
+        const { count } = await supabase
+          .from('sessions')
+          .select('*', { count: 'exact', head: true })
+          .eq('room_id', room.id)
+          .eq('is_active', true);
+        if ((count ?? 0) < 4) {
+          await get().joinRoom(currentUser.id, room.code);
+          return;
+        }
+      }
+    }
+
+    await get().createRoom(genre, true);
+  },
+>>>>>>> 8a4bdeb6c85ea1347756c68a69ef5dda54d25cbd
 
       if (error || !room) throw new Error('Room not found or no longer available');
 
@@ -330,6 +356,7 @@ export const useGameStore = create<GameStore>((set, get) => {
       });
     },
 
+<<<<<<< HEAD
     unsubscribeSessionListener: () => {
       if (sessionSyncStarted) {
         supabase.channel('session-room-sync').unsubscribe();
@@ -338,3 +365,87 @@ export const useGameStore = create<GameStore>((set, get) => {
     },
   };
 });
+=======
+    if (sessionError) throw sessionError;
+
+    set({
+      currentRoom: {
+        id: room.id,
+        code: room.code,
+        status: room.status as RoomStatus,
+        currentNarrativeState: room.current_narrative_state || '',
+        genreTag: room.genre_tag as GameGenre,
+        createdAt: room.created_at,
+        hostId: room.host_id,
+        isPublic: room.is_public,
+        gameMode: (room.game_mode as GameMode) || GameMode.FREE_TEXT
+      },
+      players: [currentUser],
+      isHost: true,
+      gameState: GameState.LOBBY
+    });
+  },
+
+  joinRoom: async (userId: string, roomCode: string) => {
+    const { setRoom, setPlayers } = get();
+
+    // Look up the room by its code
+    const { data: room, error } = await supabase
+      .from('rooms')
+      .select('*')
+      .eq('code', roomCode)
+      .single();
+
+    if (!room || error) {
+      throw new Error('Room not found.');
+    }
+
+    // Insert the player into the sessions table
+    const { error: sessionError } = await supabase
+      .from('sessions')
+      .insert({
+        user_id: userId,
+        room_id: room.id,
+        is_active: true
+      });
+
+    if (sessionError) throw sessionError;
+
+    // Get all players in the room
+    const { data: sessions } = await supabase
+      .from('sessions')
+      .select(`
+        user_id,
+        profiles!inner(username, avatar_url)
+      `)
+      .eq('room_id', room.id)
+      .eq('is_active', true);
+
+    const players: User[] = sessions?.map(session => ({
+      id: session.user_id,
+      username: session.profiles?.username || 'Player',
+      avatar: session.profiles?.avatar_url || `https://api.dicebear.com/7.x/pixel-art/svg?seed=${session.profiles?.username || 'player'}`,
+      oarWalletLinked: false,
+      status: 'alive'
+    })) || [];
+
+    const isHost = room.host_id === userId;
+
+    const mappedRoom: Room = {
+      id: room.id,
+      code: room.code,
+      status: room.status as RoomStatus,
+      currentNarrativeState: room.current_narrative_state || '',
+      genreTag: room.genre_tag as GameGenre,
+      createdAt: room.created_at,
+      hostId: room.host_id,
+      isPublic: room.is_public,
+      gameMode: (room.game_mode as GameMode) || GameMode.FREE_TEXT
+    };
+
+    setRoom(mappedRoom);
+    setPlayers(players);
+    set({ isHost, gameState: GameState.LOBBY });
+  }
+}));
+>>>>>>> 8a4bdeb6c85ea1347756c68a69ef5dda54d25cbd
