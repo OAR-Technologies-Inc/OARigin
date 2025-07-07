@@ -17,7 +17,6 @@ const GameScreen: React.FC = () => {
     currentRoom,
     players,
     currentPlayerIndex,
-    storySegments,
     addStorySegment,
     gameState,
     loadingStory,
@@ -123,7 +122,8 @@ const GameScreen: React.FC = () => {
 
   useEffect(() => {
     const initializeStory = async () => {
-      if (!hasStartedRef.current && currentRoom && storySegments.length === 0 && !loadingStory) {
+      const logLength = gameStateTable?.story_log?.length || 0;
+      if (!hasStartedRef.current && currentRoom && logLength === 0 && !loadingStory) {
         hasStartedRef.current = true;
         setLoadingStory(true);
 
@@ -165,7 +165,7 @@ const GameScreen: React.FC = () => {
     };
 
     initializeStory();
-  }, [currentRoom, storySegments, loadingStory, players, setLoadingStory]);
+  }, [currentRoom, gameStateTable, loadingStory, players, setLoadingStory]);
 
   const handleMakeChoice = async (choice: string) => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -189,8 +189,8 @@ const GameScreen: React.FC = () => {
       const deadPlayers = players.filter(p => p.status === 'dead').map(p => p.username);
       const result = await generateStoryContinuation({
         genre: currentRoom.genreTag || 'adventure',
-        players: players.map(p => p.username),
-        storyLog: storySegments.map(s => s.aiResponse || s.content).filter(Boolean),
+        players: players.map((p) => p.username),
+        storyLog: gameStateTable?.story_log?.map((s) => s.text) || [],
         currentPlayer: players[currentPlayerIndex].username,
         playerInput: choice,
         deadPlayers,
