@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../store';
 import { supabase } from '../lib/supabase';
 import { Clock, Copy, Play, Users } from 'lucide-react';
 import Button from '../components/ui/Button';
-import { GameGenre, GameMode, } from '../types';
+import { GameGenre, GameMode } from '../types';
 import Card from '../components/ui/Card';
 import { generateStoryBeginning } from '../utils/mockAi';
 
@@ -17,6 +18,7 @@ const LobbyScreen: React.FC = () => {
     setPresenceChannel,
     currentUser,
   } = useGameStore();
+  const navigate = useNavigate();
   const [countdown, setCountdown] = useState<number | null>(null);
   const [showShareSuccess, setShowShareSuccess] = useState(false);
   const [selectedGameMode, setSelectedGameMode] = useState<GameMode>(
@@ -26,6 +28,14 @@ const LobbyScreen: React.FC = () => {
     currentRoom?.genreTag || GameGenre.HORROR
   );
   const isMounted = useRef(true);
+
+  // Navigate to GameScreen when game starts
+  useEffect(() => {
+    if (currentRoom?.status === 'in_progress') {
+      console.log('[NAVIGATION] Room status is in_progress, navigating to /game');
+      navigate('/game');
+    }
+  }, [currentRoom?.status, navigate]);
 
   // Upsert session for all players
   useEffect(() => {
@@ -55,11 +65,11 @@ const LobbyScreen: React.FC = () => {
               is_active: true,
             },
           ],
-          { onConflict: 'user_id' }
+          { onConflict: 'user_id,room_id' } // Updated to include room_id
         );
 
       if (error) {
-        console.error('[SESSION JOIN ERROR]', error.message);
+        console.error('[SESSION JOIN ERROR]', error.message, error.details);
       } else {
         console.log('[SESSION JOINED]', { userId: user.id, roomId });
       }
@@ -78,7 +88,7 @@ const LobbyScreen: React.FC = () => {
         .eq('is_active', true);
 
       if (error) {
-        console.error('[FETCH PLAYERS ERROR]', error.message);
+        console.error('[FETCH PLAYERS ERROR]', error.message, error.details);
         return;
       }
 
@@ -113,6 +123,7 @@ const LobbyScreen: React.FC = () => {
           event: '*',
           schema: 'public',
           table: 'sessions',
+          filter: `room_id=eq.${roomId}`,
         },
         (payload) => {
           if ('new' in payload && payload.new && 'room_id' in payload.new) {
@@ -126,8 +137,11 @@ const LobbyScreen: React.FC = () => {
           }
         }
       )
-      .subscribe((status) => {
-        console.log('[SESSION SUBSCRIBE STATUS]', status);
+      .subscribe((status, error) => {
+        console.log('[SESSION SUBSCRIBE STATUS]', { status, error });
+        if (error) {
+          console.error('[SESSION SUBSCRIBE ERROR]', error.message);
+        }
       });
 
     // Subscribe to room status changes (game started)
@@ -156,14 +170,18 @@ const LobbyScreen: React.FC = () => {
             isPublic: raw.isPublic,
           };
 
+          console.log('[ROOM STATUS UPDATE]', updatedRoom);
           if (updatedRoom.status === 'in_progress') {
             console.log('[ROOM STATUS] Game started — updating store');
             useGameStore.getState().setRoom(updatedRoom);
           }
         }
       )
-      .subscribe((status) => {
-        console.log('[ROOM STATUS SUBSCRIBE]', status);
+      .subscribe((status, error) => {
+        console.log('[ROOM STATUS SUBSCRIBE]', { status, error });
+        if (error) {
+          console.error('[ROOM STATUS SUBSCRIBE ERROR]', error.message);
+        }
       });
 
     // Cleanup
@@ -203,7 +221,7 @@ const LobbyScreen: React.FC = () => {
         .eq('is_active', true);
 
       if (error) {
-        console.error('[FETCH PLAYERS ERROR]', error.message);
+        console.error('[FETCH PLAYERS ERROR]', error.message, error.details);
         return;
       }
 
@@ -235,6 +253,7 @@ const LobbyScreen: React.FC = () => {
           event: '*',
           schema: 'public',
           table: 'sessions',
+          filter: `room_id=eq.${roomId}`,
         },
         (payload) => {
           if ('new' in payload && payload.new && 'room_id' in payload.new) {
@@ -250,8 +269,11 @@ const LobbyScreen: React.FC = () => {
           }
         }
       )
-      .subscribe((status) => {
-        console.log('[SUBSCRIBE STATUS]', status);
+      .subscribe((status, error) => {
+        console.log('[SUBSCRIBE STATUS]', { status, error });
+        if (error) {
+          console.error('[SUBSCRIBE ERROR]', error.message);
+        }
       });
 
     setPresenceChannel(channel);
@@ -262,13 +284,26 @@ const LobbyScreen: React.FC = () => {
     };
   }, [currentRoom?.id, setPresenceChannel]);
 
-  const handleSaveSettings = () => {
+  const handleSaveSettings = async () => {
     if (!isHost || !currentRoom) return;
-    setRoom({
-      ...currentRoom,
-      gameMode: selectedGameMode,
-      genreTag: selectedGenre,
-    });
+    const { error } = await supabase
+      .from('rooms')
+      .update({
+        game_mode: selectedGameMode,
+        genre_tag: selectedGenre,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', currentRoom.id);
+
+    if (error) {
+      console.error('[SAVE SETTINGS ERROR]', error.message, error.details);
+    } else {
+      setRoom({
+        ...currentRoom,
+        gameMode: selectedGameMode,
+        genreTag: selectedGenre,
+      });
+    }
   };
 
   const handleGameModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -293,13 +328,35 @@ const LobbyScreen: React.FC = () => {
           // Generate initial story and insert into game_state
           const initializeGameState = async () => {
             try {
+              // Check if game_state already exists
+              const { data: existingState, error: checkError } = await supabase
+                .from('game_state')
+                .select('id')
+                .eq('room_id', currentRoom.id)
+                .limit(1);
+
+              if (checkError) {
+                console.error('[CHECK GAME STATE ERROR]', checkError.message, checkError.details);
+                return;
+              }
+
+              if (existingState?.length > 0) {
+                console.log('[GAME STATE EXISTS]', { roomId: currentRoom.id });
+                return;
+              }
+
               const initialStory = await generateStoryBeginning(
                 currentRoom.genreTag || 'adventure',
                 players,
                 currentRoom
-              );
+              ).catch((err) => {
+                console.error('[GENERATE STORY BEGINNING ERROR]', err);
+                return 'Mock story beginning due to generation error';
+              });
 
-              const { error } = await supabase
+              console.log('[GENERATE STORY BEGINNING]', initialStory);
+
+              const { data, error } = await supabase
                 .from('game_state')
                 .insert({
                   room_id: currentRoom.id,
@@ -307,12 +364,14 @@ const LobbyScreen: React.FC = () => {
                   story_log: JSON.stringify([{ type: 'intro', text: initialStory }]),
                   current_turn: 0,
                   current_player_id: currentUser.id,
-                });
+                })
+                .select()
+                .single();
 
               if (error) {
-                console.error('[GAME STATE INSERT ERROR]', error.message);
+                console.error('[GAME STATE INSERT ERROR]', error.message, error.details);
               } else {
-                console.log('[GAME STATE INITIALIZED]', { roomId: currentRoom.id });
+                console.log('[GAME STATE INITIALIZED]', { roomId: currentRoom.id, data });
               }
             } catch (error) {
               console.error('[STORY GENERATION ERROR]', error);

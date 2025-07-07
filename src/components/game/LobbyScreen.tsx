@@ -1,21 +1,143 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Clock, Copy, Play, Users } from 'lucide-react';
 import { useGameStore } from '../../store';
+import { supabase } from '../../lib/supabase';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 import { GameGenre, GameMode } from '../../types';
+import { generateStoryBeginning } from '../../utils/mockAi';
 
 const LobbyScreen: React.FC = () => {
   const navigate = useNavigate();
-  const { currentRoom, players, isHost, startGame, setRoom } = useGameStore();
+  const { currentRoom, players, isHost, startGame, setRoom, currentUser } = useGameStore();
   const [countdown, setCountdown] = useState<number | null>(null);
   const [showShareSuccess, setShowShareSuccess] = useState(false);
+  const isMounted = useRef(true);
 
-  // Debug data to diagnose issues (remove after testing)
+  // Debug data
   useEffect(() => {
     console.log('LobbyScreen Data:', { currentRoom, players, isHost });
   }, [currentRoom, players, isHost]);
+
+  // Navigate when room status changes to in_progress
+  useEffect(() => {
+    if (currentRoom?.status === 'in_progress') {
+      console.log('[NAVIGATION] Room status is in_progress, navigating to /game');
+      navigate('/game');
+    }
+  }, [currentRoom?.status, navigate]);
+
+  // Subscribe to room status and player updates
+  useEffect(() => {
+    const roomId = currentRoom?.id;
+    if (!roomId) return;
+
+    isMounted.current = true;
+
+    const fetchPlayers = async () => {
+      if (!isMounted.current) return;
+      console.log('[FETCH PLAYERS] Running fetch for room:', roomId);
+      const { data: sessions, error } = await supabase
+        .from('sessions')
+        .select(`
+          user_id,
+          profiles!inner(username, avatar_url)
+        `)
+        .eq('room_id', roomId)
+        .eq('is_active', true);
+
+      if (error) {
+        console.error('[FETCH PLAYERS ERROR]', error.message, error.details);
+        return;
+      }
+
+      const players = sessions?.map((s) => {
+        const profile = Array.isArray(s.profiles) ? s.profiles[0] : s.profiles;
+        return {
+          id: s.user_id,
+          username: profile?.username || 'Player',
+          avatar:
+            profile?.avatar_url ||
+            `https://api.dicebear.com/7.x/pixel-art/svg?seed=${profile?.username || 'player'}`,
+          oarWalletLinked: false,
+          status: 'alive' as 'alive',
+        };
+      }) || [];
+
+      if (isMounted.current) {
+        useGameStore.getState().setPlayers(players);
+      }
+    };
+
+    fetchPlayers();
+
+    const sessionChannel = supabase
+      .channel(`lobby-room-${roomId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'sessions',
+          filter: `room_id=eq.${roomId}`,
+        },
+        (payload) => {
+          if ('new' in payload && payload.new && 'room_id' in payload.new) {
+            const sessionRoomId = (payload.new as { room_id: string }).room_id;
+            if (sessionRoomId === roomId) {
+              console.log('[REALTIME] sessions change received — refetching players');
+              fetchPlayers();
+            }
+          }
+        }
+      )
+      .subscribe((status, error) => {
+        console.log('[SESSION SUBSCRIBE STATUS]', { status, error });
+        if (error) console.error('[SESSION SUBSCRIBE ERROR]', error.message);
+      });
+
+    const roomChannel = supabase
+      .channel(`room-status-${roomId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'rooms',
+          filter: `id=eq.${roomId}`,
+        },
+        (payload) => {
+          const raw = payload.new as Record<string, any>;
+          const updatedRoom = {
+            id: raw.id,
+            code: raw.code,
+            hostId: raw.hostId,
+            status: raw.status,
+            genreTag: raw.genreTag,
+            gameMode: raw.gameMode as GameMode,
+            currentNarrativeState: raw.currentNarrativeState,
+            createdAt: raw.createdAt,
+            isPublic: raw.isPublic,
+          };
+          console.log('[ROOM STATUS UPDATE]', updatedRoom);
+          if (updatedRoom.status === 'in_progress') {
+            console.log('[ROOM STATUS] Game started — updating store');
+            useGameStore.getState().setRoom(updatedRoom);
+          }
+        }
+      )
+      .subscribe((status, error) => {
+        console.log('[ROOM STATUS SUBSCRIBE]', { status, error });
+        if (error) console.error('[ROOM STATUS SUBSCRIBE ERROR]', error.message);
+      });
+
+    return () => {
+      isMounted.current = false;
+      supabase.removeChannel(sessionChannel);
+      supabase.removeChannel(roomChannel);
+    };
+  }, [currentRoom?.id]);
 
   const handleGameModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (!isHost || !currentRoom) return;
@@ -29,15 +151,68 @@ const LobbyScreen: React.FC = () => {
     setRoom({ ...currentRoom, genreTag: newGenre });
   };
 
-  const handleStartGame = () => {
-    if (!isHost) return;
+  const handleStartGame = async () => {
+    if (!isHost || !currentRoom || !currentUser) return;
     setCountdown(5);
-    const interval = setInterval(() => {
+    const interval = setInterval(async () => {
       setCountdown((prev) => {
         if (prev === null || prev <= 1) {
           clearInterval(interval);
           startGame();
-          navigate('/game');
+
+          // Initialize game_state
+          const initializeGameState = async () => {
+            try {
+              const { data: existingState, error: checkError } = await supabase
+                .from('game_state')
+                .select('id')
+                .eq('room_id', currentRoom.id)
+                .limit(1);
+
+              if (checkError) {
+                console.error('[CHECK GAME STATE ERROR]', checkError.message, checkError.details);
+                return;
+              }
+
+              if (existingState?.length > 0) {
+                console.log('[GAME STATE EXISTS]', { roomId: currentRoom.id });
+                return;
+              }
+
+              const initialStory = await generateStoryBeginning(
+                currentRoom.genreTag || 'adventure',
+                players,
+                currentRoom
+              ).catch((err) => {
+                console.error('[GENERATE STORY BEGINNING ERROR]', err);
+                return 'Mock story beginning due to generation error';
+              });
+
+              console.log('[GENERATE STORY BEGINNING]', initialStory);
+
+              const { data, error } = await supabase
+                .from('game_state')
+                .insert({
+                  room_id: currentRoom.id,
+                  current_narrative: initialStory,
+                  story_log: JSON.stringify([{ type: 'intro', text: initialStory }]),
+                  current_turn: 0,
+                  current_player_id: currentUser.id,
+                })
+                .select()
+                .single();
+
+              if (error) {
+                console.error('[GAME STATE INSERT ERROR]', error.message, error.details);
+              } else {
+                console.log('[GAME STATE INITIALIZED]', { roomId: currentRoom.id, data });
+              }
+            } catch (error) {
+              console.error('[STORY GENERATION ERROR]', error);
+            }
+          };
+
+          initializeGameState();
           return null;
         }
         return prev - 1;
@@ -74,20 +249,17 @@ const LobbyScreen: React.FC = () => {
     );
   }
 
-  // Prepare room data with safe access
   const roomCode = currentRoom.code || 'N/A';
   const genre = currentRoom.genreTag || GameGenre.HORROR;
-  const hostPlayer = players.find(p => p.id === currentRoom.hostId);
+  const hostPlayer = players.find((p) => p.id === currentRoom.hostId);
   const hostName = hostPlayer?.username || 'Unknown';
   const playerCount = players.length;
 
   return (
     <div className="flex justify-center items-center min-h-screen bg-black">
       <Card className="p-6 max-w-md w-full border-2 border-green-500 bg-black relative">
-        {/* CRT scanline effect */}
         <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(0,255,0,0.05)_1px,transparent_1px)] bg-[size:4px_4px] opacity-50"></div>
 
-        {/* Room Status */}
         <div className="mb-6">
           <h1 className="text-green-500 font-mono text-2xl text-center mb-2">
             OARigin Terminal
@@ -104,15 +276,12 @@ const LobbyScreen: React.FC = () => {
           </div>
         </div>
 
-        {/* Transmit Invite */}
         <div className="mb-6">
           <h2 className="text-green-500 font-mono text-lg mb-2 flex items-center">
             <Copy size={16} className="mr-2" /> Transmit Invite
           </h2>
           <div className="border border-amber-500 p-2 bg-gray-900 animate-pulse">
-            <p className="text-amber-500 font-mono text-center">
-              {roomCode}
-            </p>
+            <p className="text-amber-500 font-mono text-center">{roomCode}</p>
           </div>
           <Button
             variant="primary"
@@ -131,17 +300,13 @@ const LobbyScreen: React.FC = () => {
           )}
         </div>
 
-        {/* Crew Manifest */}
         <div className="mb-6">
           <h2 className="text-green-500 font-mono text-lg mb-2 flex items-center">
             <Users size={16} className="mr-2" /> Crew Manifest
           </h2>
           <div className="border border-green-500 p-2">
             {players.map((player) => (
-              <p
-                key={player.id}
-                className="text-green-500 font-mono text-sm"
-              >
+              <p key={player.id} className="text-green-500 font-mono text-sm">
                 &gt; {player.username || 'Unknown'}
                 {player.id === currentRoom.hostId && (
                   <span className="text-amber-500"> (Host)</span>
@@ -156,7 +321,6 @@ const LobbyScreen: React.FC = () => {
           </div>
         </div>
 
-        {/* Host Controls */}
         <div>
           <h2 className="text-green-500 font-mono text-lg mb-2 flex items-center">
             <Clock size={16} className="mr-2" /> Configure Mission

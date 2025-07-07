@@ -73,7 +73,7 @@ export const useGameStore = create<GameStore>((set, get) => {
       .eq('is_active', true);
 
     if (error) {
-      console.error('Error fetching sessions:', error);
+      console.error('Error fetching sessions:', error.message, error.details);
       return [];
     }
 
@@ -117,8 +117,11 @@ export const useGameStore = create<GameStore>((set, get) => {
           }
         }
       )
-      .subscribe((status) => {
-        console.log('Session sync subscription status:', status);
+      .subscribe((status, error) => {
+        console.log('Session sync subscription status:', { status, error });
+        if (error) {
+          console.error('[SESSION SYNC SUBSCRIBE ERROR]', error.message);
+        }
       });
   };
 
@@ -170,13 +173,19 @@ export const useGameStore = create<GameStore>((set, get) => {
       const { currentRoom } = get();
       if (!currentRoom?.id) return;
 
-      await supabase
+      const { error } = await supabase
         .from('rooms')
         .update({
           status: 'in_progress',
           updated_at: new Date().toISOString()
         })
         .eq('id', currentRoom.id);
+
+      if (error) {
+        console.error('[START GAME ERROR]', error.message, error.details);
+      } else {
+        console.log('[START GAME] Room status updated to in_progress for room:', currentRoom.id);
+      }
 
       set({ gameState: GameState.PLAYING });
     },
@@ -370,7 +379,7 @@ export const useGameStore = create<GameStore>((set, get) => {
           status: room.status as RoomStatus,
           currentNarrativeState: room.current_narrative_state || '',
           genreTag: room.genre_tag as GameGenre,
-          createdAt: room.created_at,
+          createdAt: role.created_at,
           hostId: room.host_id,
           isPublic: room.is_public,
           gameMode: (room.game_mode as GameMode) || GameMode.FREE_TEXT,

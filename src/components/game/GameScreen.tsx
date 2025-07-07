@@ -46,12 +46,15 @@ const GameScreen: React.FC = () => {
         .from('game_state')
         .select('*')
         .eq('room_id', currentRoom.id)
-        .single();
+        .limit(1)
+        .maybeSingle();
 
       if (error) {
-        console.error('[FETCH GAME STATE ERROR]', error.message);
+        console.error('[FETCH GAME STATE ERROR]', error.message, error.details);
         return;
       }
+
+      console.log('[FETCH GAME STATE DATA]', data);
 
       if (data) {
         setGameStateTable({
@@ -64,6 +67,8 @@ const GameScreen: React.FC = () => {
           created_at: data.created_at,
           updated_at: data.updated_at,
         });
+      } else {
+        console.warn('[FETCH GAME STATE] No game state found for room:', currentRoom.id);
       }
     };
 
@@ -91,13 +96,16 @@ const GameScreen: React.FC = () => {
               created_at: string;
               updated_at: string;
             };
-            setGameStateTable(newState);
             console.log('[REALTIME] Game state updated:', newState);
+            setGameStateTable(newState);
           }
         }
       )
-      .subscribe((status) => {
-        console.log('[GAME STATE SUBSCRIBE STATUS]', status);
+      .subscribe((status, error) => {
+        console.log('[GAME STATE SUBSCRIBE STATUS]', { status, error });
+        if (error) {
+          console.error('[GAME STATE SUBSCRIBE ERROR]', error.message);
+        }
       });
 
     return () => {
