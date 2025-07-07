@@ -139,16 +139,40 @@ const LobbyScreen: React.FC = () => {
     };
   }, [currentRoom?.id]);
 
-  const handleGameModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleGameModeChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (!isHost || !currentRoom) return;
     const newGameMode = e.target.value as GameMode;
-    setRoom({ ...currentRoom, gameMode: newGameMode });
+    const { error } = await supabase
+      .from('rooms')
+      .update({
+        game_mode: newGameMode,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', currentRoom.id);
+
+    if (error) {
+      console.error('[GAME MODE UPDATE ERROR]', error.message, error.details);
+    } else {
+      setRoom({ ...currentRoom, gameMode: newGameMode });
+    }
   };
 
-  const handleGenreChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleGenreChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (!isHost || !currentRoom) return;
     const newGenre = e.target.value as GameGenre;
-    setRoom({ ...currentRoom, genreTag: newGenre });
+    const { error } = await supabase
+      .from('rooms')
+      .update({
+        genre_tag: newGenre,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', currentRoom.id);
+
+    if (error) {
+      console.error('[GENRE UPDATE ERROR]', error.message, error.details);
+    } else {
+      setRoom({ ...currentRoom, genreTag: newGenre });
+    }
   };
 
   const handleStartGame = async () => {
@@ -179,14 +203,17 @@ const LobbyScreen: React.FC = () => {
                 return;
               }
 
-              const initialStory = await generateStoryBeginning(
-                currentRoom.genreTag || 'adventure',
-                players,
-                currentRoom
-              ).catch((err) => {
+              let initialStory: string;
+              try {
+                initialStory = await generateStoryBeginning(
+                  currentRoom.genreTag || 'adventure',
+                  players,
+                  currentRoom
+                );
+              } catch (err) {
                 console.error('[GENERATE STORY BEGINNING ERROR]', err);
-                return 'Mock story beginning due to generation error';
-              });
+                initialStory = 'The adventure begins in a mysterious realm...';
+              }
 
               console.log('[GENERATE STORY BEGINNING]', initialStory);
 
@@ -307,7 +334,7 @@ const LobbyScreen: React.FC = () => {
           <div className="border border-green-500 p-2">
             {players.map((player) => (
               <p key={player.id} className="text-green-500 font-mono text-sm">
-                &gt; {player.username || 'Unknown'}
+                > {player.username || 'Unknown'}
                 {player.id === currentRoom.hostId && (
                   <span className="text-amber-500"> (Host)</span>
                 )}
@@ -329,11 +356,11 @@ const LobbyScreen: React.FC = () => {
             <>
               <div className="border border-green-500 p-2 mb-4">
                 <div className="flex justify-between items-center mb-2">
-                  <span className="text-green-500 font-mono text-sm">&gt; Genre:</span>
+                  <span className="text-green-500 font-mono text-sm">> Genre:</span>
                   <select
                     className="bg-black text-green-500 border border-green-500 font-mono text-sm p-1"
                     value={currentRoom.genreTag || GameGenre.HORROR}
-                    onChange={handleGenreChange}
+                    onChange={handleGameModeChange}
                   >
                     {Object.values(GameGenre).map((genre) => (
                       <option key={genre} value={genre} className="bg-black">
@@ -343,7 +370,7 @@ const LobbyScreen: React.FC = () => {
                   </select>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-green-500 font-mono text-sm">&gt; Mode:</span>
+                  <span className="text-green-500 font-mono text-sm">> Mode:</span>
                   <select
                     className="bg-black text-green-500 border border-green-500 font-mono text-sm p-1"
                     value={currentRoom.gameMode || GameMode.FREE_TEXT}

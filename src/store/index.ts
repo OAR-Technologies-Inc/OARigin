@@ -379,7 +379,7 @@ export const useGameStore = create<GameStore>((set, get) => {
           status: room.status as RoomStatus,
           currentNarrativeState: room.current_narrative_state || '',
           genreTag: room.genre_tag as GameGenre,
-          createdAt: role.created_at,
+          createdAt: room.created_at,
           hostId: room.host_id,
           isPublic: room.is_public,
           gameMode: (room.game_mode as GameMode) || GameMode.FREE_TEXT,
