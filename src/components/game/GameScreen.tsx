@@ -9,6 +9,7 @@ import Card from '../ui/Card';
 import { StorySegment, GameState, GameProgress, GameMode } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
 import { generateStoryBeginning, generateStoryContinuation } from '../../utils/mockAi';
+import { supabase } from '../../lib/supabase';
 
 const GameScreen: React.FC = () => {
   const navigate = useNavigate();
@@ -27,12 +28,82 @@ const GameScreen: React.FC = () => {
     setGameState,
     progress,
     currentUser,
+    gameStateTable,
+    setGameStateTable,
   } = useGameStore();
 
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [tempSegment, setTempSegment] = useState<StorySegment | null>(null);
   const [animationComplete, setAnimationComplete] = useState(false);
   const hasStartedRef = useRef(false);
+
+  // Fetch and subscribe to game_state
+  useEffect(() => {
+    if (!currentRoom?.id) return;
+
+    const fetchGameState = async () => {
+      const { data, error } = await supabase
+        .from('game_state')
+        .select('*')
+        .eq('room_id', currentRoom.id)
+        .single();
+
+      if (error) {
+        console.error('[FETCH GAME STATE ERROR]', error.message);
+        return;
+      }
+
+      if (data) {
+        setGameStateTable({
+          id: data.id,
+          room_id: data.room_id,
+          current_narrative: data.current_narrative,
+          story_log: data.story_log,
+          current_turn: data.current_turn,
+          current_player_id: data.current_player_id,
+          created_at: data.created_at,
+          updated_at: data.updated_at,
+        });
+      }
+    };
+
+    fetchGameState();
+
+    const gameStateChannel = supabase
+      .channel(`game-state-${currentRoom.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'game_state',
+          filter: `room_id=eq.${currentRoom.id}`,
+        },
+        (payload) => {
+          if ('new' in payload && payload.new) {
+            const newState = payload.new as {
+              id: string;
+              room_id: string;
+              current_narrative: string;
+              story_log: { type: string; text: string }[];
+              current_turn: number;
+              current_player_id: string;
+              created_at: string;
+              updated_at: string;
+            };
+            setGameStateTable(newState);
+            console.log('[REALTIME] Game state updated:', newState);
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('[GAME STATE SUBSCRIBE STATUS]', status);
+      });
+
+    return () => {
+      supabase.removeChannel(gameStateChannel);
+    };
+  }, [currentRoom?.id, setGameStateTable]);
 
   // Debug store state
   useEffect(() => {
@@ -43,7 +114,8 @@ const GameScreen: React.FC = () => {
     console.log('players:', players);
     console.log('currentPlayerIndex:', currentPlayerIndex);
     console.log('currentUser:', currentUser);
-  }, [currentRoom, players, currentPlayerIndex, currentUser]);
+    console.log('gameStateTable:', gameStateTable);
+  }, [currentRoom, players, currentPlayerIndex, currentUser, gameStateTable]);
 
   useEffect(() => {
     if (!currentRoom) navigate('/');
@@ -96,6 +168,12 @@ const GameScreen: React.FC = () => {
   }, [currentRoom, storySegments, loadingStory, players, setLoadingStory]);
 
   const handleMakeChoice = async (choice: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || user.id !== gameStateTable?.current_player_id) {
+      console.log('----Input Blocked: Not Current Player----');
+      return;
+    }
+
     const isCurrentPlayerDead = players[currentPlayerIndex]?.status === 'dead';
     const isUserDead = currentUser?.id && players.find(p => p.id === currentUser.id)?.status === 'dead';
     if (loadingStory || !currentRoom || tempSegment || gameState === GameState.ENDED || isCurrentPlayerDead || isUserDead) {
@@ -147,6 +225,39 @@ const GameScreen: React.FC = () => {
         createdAt: new Date().toISOString(),
       };
 
+      // Update game_state
+      const { data: currentState } = await supabase
+        .from('game_state')
+        .select('story_log')
+        .eq('room_id', currentRoom.id)
+        .single();
+
+      const currentStoryLog = currentState?.story_log || [];
+      const updatedStoryLog = [
+        ...currentStoryLog,
+        { type: 'player_input', text: choice },
+        { type: 'ai_response', text: text.replace('[GAME_ENDED]', '') },
+      ];
+
+      // Determine next player
+      const alivePlayers = players.filter(p => p.status === 'alive');
+      let nextIndex = (currentPlayerIndex + 1) % players.length;
+      while (players[nextIndex]?.status === 'dead' && alivePlayers.length > 0) {
+        nextIndex = (nextIndex + 1) % players.length;
+      }
+      const nextPlayerId = alivePlayers.length > 0 ? players[nextIndex].id : null;
+
+      await supabase
+        .from('game_state')
+        .update({
+          current_narrative: text.replace('[GAME_ENDED]', ''),
+          story_log: updatedStoryLog,
+          current_turn: (gameStateTable?.current_turn || 0) + 1,
+          current_player_id: nextPlayerId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('room_id', currentRoom.id);
+
       setTempSegment(newSegment);
       setAnimationComplete(false);
 
@@ -170,7 +281,9 @@ const GameScreen: React.FC = () => {
   };
 
   const handleExportTranscript = () => {
-    const transcript = storySegments.map(s => `${s.aiResponse}\n${s.content || ''}\n`).join('\n');
+    const transcript = gameStateTable?.story_log
+      ?.map(s => `${s.text}\n`)
+      .join('\n') || '';
     const blob = new Blob([transcript], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -182,8 +295,8 @@ const GameScreen: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const currentPlayer = players[currentPlayerIndex]?.username || 'Player';
-  const isCurrentPlayerDead = players[currentPlayerIndex]?.status === 'dead';
+  const currentPlayer = players.find(p => p.id === gameStateTable?.current_player_id)?.username || 'Player';
+  const isCurrentPlayerDead = players.find(p => p.id === gameStateTable?.current_player_id)?.status === 'dead';
 
   return (
     <div className="min-h-screen flex flex-col p-2 md:p-4">
@@ -209,7 +322,15 @@ const GameScreen: React.FC = () => {
 
       <Card className="flex-grow p-2 md:p-4 overflow-hidden">
         <StoryConsole
-          storySegments={storySegments}
+          storySegments={gameStateTable?.story_log?.map((log, index) => ({
+            id: `${index}`,
+            roomId: currentRoom?.id || '',
+            content: log.type === 'player_input' ? log.text : '',
+            aiResponse: log.type === 'ai_response' || log.type === 'intro' ? log.text : '',
+            decisionType: 'freestyle',
+            options: [],
+            createdAt: new Date().toISOString(),
+          })) || []}
           tempSegment={tempSegment}
           setTempSegment={setTempSegment}
           addStorySegment={addStorySegment}
@@ -220,6 +341,7 @@ const GameScreen: React.FC = () => {
           gameState={gameState}
           animationComplete={animationComplete}
           setAnimationComplete={setAnimationComplete}
+          currentNarrative={gameStateTable?.current_narrative || ''}
         />
       </Card>
 

@@ -1,138 +1,325 @@
-// LobbyScreen.tsx
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState, useRef } from 'react';
 import { useGameStore } from '../store';
 import { supabase } from '../lib/supabase';
 import { Clock, Copy, Play, Users } from 'lucide-react';
-import Card from '../ui/Card';
 import Button from '../ui/Button';
 import { GameGenre, GameMode } from '../types';
-import { supabase } from '../lib/supabase';
+import Card from '../components/ui/Card';
+import { generateStoryBeginning } from '../utils/mockAi';
 
 const LobbyScreen: React.FC = () => {
-  const navigate = useNavigate();
   const {
     currentRoom,
     players,
     isHost,
     startGame,
-    setRoom
-  } = useGameStore();
-
     setRoom,
-    setPresenceChannel
+    setPresenceChannel,
+    currentUser,
   } = useGameStore();
   const [countdown, setCountdown] = useState<number | null>(null);
   const [showShareSuccess, setShowShareSuccess] = useState(false);
+  const [selectedGameMode, setSelectedGameMode] = useState<GameMode>(
+    currentRoom?.gameMode || GameMode.FREE_TEXT
+  );
+  const [selectedGenre, setSelectedGenre] = useState<GameGenre>(
+    currentRoom?.genreTag || GameGenre.HORROR
+  );
+  const isMounted = useRef(true);
 
-  // Ensure user has a room
+  // Upsert session for all players
   useEffect(() => {
-    if (!currentRoom) {
-      navigate('/');
-    }
-  }, [currentRoom, navigate]);
+    const roomId = currentRoom?.id;
+    if (!roomId) return;
 
- HEAD
-  // Realtime room status sync for host's game start
-  useEffect(() => {
-    if (!currentRoom?.id) return;
+    isMounted.current = true;
 
-    const channel = supabase
-      .channel('lobby-room-sync')
+    const joinSession = async () => {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        console.warn('[SESSION JOIN] Missing user or error:', userError);
+        return;
+      }
+
+      const { error } = await supabase
+        .from('sessions')
+        .upsert(
+          [
+            {
+              user_id: user.id,
+              room_id: roomId,
+              is_active: true,
+            },
+          ],
+          { onConflict: 'user_id' }
+        );
+
+      if (error) {
+        console.error('[SESSION JOIN ERROR]', error.message);
+      } else {
+        console.log('[SESSION JOINED]', { userId: user.id, roomId });
+      }
+    };
+
+    const fetchPlayers = async () => {
+      if (!isMounted.current) return;
+      console.log('[FETCH PLAYERS] Running fetch for room:', roomId);
+      const { data: sessions, error } = await supabase
+        .from('sessions')
+        .select(`
+          user_id,
+          profiles!inner(username, avatar_url)
+        `)
+        .eq('room_id', roomId)
+        .eq('is_active', true);
+
+      if (error) {
+        console.error('[FETCH PLAYERS ERROR]', error.message);
+        return;
+      }
+
+      const players = sessions?.map((s) => {
+        const profile = Array.isArray(s.profiles) ? s.profiles[0] : s.profiles;
+        return {
+          id: s.user_id,
+          username: profile?.username || 'Player',
+          avatar:
+            profile?.avatar_url ||
+            `https://api.dicebear.com/7.x/pixel-art/svg?seed=${profile?.username || 'player'}`,
+          oarWalletLinked: false,
+          status: 'alive' as 'alive',
+        };
+      }) || [];
+
+      if (isMounted.current) {
+        useGameStore.getState().setPlayers(players);
+      }
+    };
+
+    // Run session join + initial fetch
+    joinSession();
+    fetchPlayers();
+
+    // Subscribe to sessions updates (player joins/leaves)
+    const sessionChannel = supabase
+      .channel(`lobby-room-${roomId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'sessions',
+        },
+        (payload) => {
+          if ('new' in payload && payload.new && 'room_id' in payload.new) {
+            const sessionRoomId = (payload.new as { room_id: string }).room_id;
+            if (sessionRoomId === roomId) {
+              console.log('[REALTIME] sessions change received — refetching players');
+              fetchPlayers();
+            } else {
+              console.log('[REALTIME] ignored session with room_id:', sessionRoomId);
+            }
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('[SESSION SUBSCRIBE STATUS]', status);
+      });
+
+    // Subscribe to room status changes (game started)
+    const roomChannel = supabase
+      .channel(`room-status-${roomId}`)
       .on(
         'postgres_changes',
         {
           event: 'UPDATE',
           schema: 'public',
           table: 'rooms',
-          filter: `id=eq.${currentRoom.id}`
+          filter: `id=eq.${roomId}`,
         },
         (payload) => {
-          const updatedStatus = payload.new.status;
-          if (updatedStatus === 'in_progress') {
-            navigate('/game');
+          const raw = payload.new as Record<string, any>;
+
+          const updatedRoom = {
+            id: raw.id,
+            code: raw.code,
+            hostId: raw.hostId,
+            status: raw.status,
+            genreTag: raw.genreTag,
+            gameMode: raw.gameMode as GameMode,
+            currentNarrativeState: raw.currentNarrativeState,
+            createdAt: raw.createdAt,
+            isPublic: raw.isPublic,
+          };
+
+          if (updatedRoom.status === 'playing') {
+            console.log('[ROOM STATUS] Game started — updating store');
+            useGameStore.getState().setRoom(updatedRoom);
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('[ROOM STATUS SUBSCRIBE]', status);
+      });
 
+    // Cleanup
     return () => {
-      supabase.removeChannel(channel);
+      isMounted.current = false;
+      supabase.removeChannel(sessionChannel);
+      supabase.removeChannel(roomChannel);
     };
-  }, [currentRoom?.id, navigate]);
+  }, [currentRoom?.id]);
 
+  // Sync game mode and genre
   useEffect(() => {
+    if (currentRoom) {
+      setSelectedGameMode(currentRoom.gameMode || GameMode.FREE_TEXT);
+      setSelectedGenre(currentRoom.genreTag || GameGenre.HORROR);
+    }
+  }, [currentRoom]);
+
+  // Supabase subscription for player updates
+  useEffect(() => {
+    isMounted.current = true;
     const roomId = currentRoom?.id;
     if (!roomId) return;
 
+    console.log('[FETCH PLAYERS] Starting lobby sync for room:', roomId);
+
     const fetchPlayers = async () => {
-      const { data: sessions } = await supabase
+      if (!isMounted.current) return;
+      console.log('[FETCH PLAYERS] Running fetch for room:', roomId);
+      const { data: sessions, error } = await supabase
         .from('sessions')
-        .select(`user_id, profiles!inner(username, avatar_url)`)
+        .select(`
+          user_id,
+          profiles!inner(username, avatar_url)
+        `)
         .eq('room_id', roomId)
         .eq('is_active', true);
 
-      const playerList =
-        sessions?.map((s) => ({
+      if (error) {
+        console.error('[FETCH PLAYERS ERROR]', error.message);
+        return;
+      }
+
+      const players = sessions?.map((s) => {
+        const profile = Array.isArray(s.profiles) ? s.profiles[0] : s.profiles;
+        return {
           id: s.user_id,
-          username: s.profiles?.username || 'Player',
-          avatar: s.profiles?.avatar_url || `https://api.dicebear.com/7.x/pixel-art/svg?seed=${s.profiles?.username || 'player'}`,
+          username: profile?.username || 'Player',
+          avatar:
+            profile?.avatar_url ||
+            `https://api.dicebear.com/7.x/pixel-art/svg?seed=${profile?.username || 'player'}`,
           oarWalletLinked: false,
-          status: 'alive'
-        })) || [];
-      useGameStore.getState().setPlayers(playerList);
+          status: 'alive' as 'alive',
+        };
+      }) || [];
+
+      if (isMounted.current) {
+        useGameStore.getState().setPlayers(players);
+      }
     };
 
     fetchPlayers();
 
     const channel = supabase
-      .channel(`room-${roomId}`)
+      .channel(`lobby-room-${roomId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'sessions', filter: `room_id=eq.${roomId}` },
-        fetchPlayers
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },
+        {
+          event: '*',
+          schema: 'public',
+          table: 'sessions',
+        },
         (payload) => {
-          if (payload.new.status === 'in_progress') {
-            navigate('/game');
+          if ('new' in payload && payload.new && 'room_id' in payload.new) {
+            const sessionRoomId = (payload.new as { room_id: string }).room_id;
+            if (sessionRoomId === roomId) {
+              console.log('[REALTIME] sessions change received — refetching players');
+              fetchPlayers();
+            } else {
+              console.log('[REALTIME] ignored session with room_id:', sessionRoomId);
+            }
+          } else {
+            console.log('[REALTIME] payload.new missing or malformed:', payload);
           }
         }
-      );
+      )
+      .subscribe((status) => {
+        console.log('[SUBSCRIBE STATUS]', status);
+      });
 
-    channel.subscribe();
     setPresenceChannel(channel);
 
     return () => {
+      isMounted.current = false;
       supabase.removeChannel(channel);
-      setPresenceChannel(null);
     };
-  }, [currentRoom?.id, setPresenceChannel, navigate]);
- 8a4bdeb6c85ea1347756c68a69ef5dda54d25cbd
+  }, [currentRoom?.id, setPresenceChannel]);
+
+  const handleSaveSettings = () => {
+    if (!isHost || !currentRoom) return;
+    setRoom({
+      ...currentRoom,
+      gameMode: selectedGameMode,
+      genreTag: selectedGenre,
+    });
+  };
 
   const handleGameModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    if (!isHost || !currentRoom) return;
-    const newGameMode = e.target.value as GameMode;
-    setRoom({ ...currentRoom, gameMode: newGameMode });
+    if (!isHost) return;
+    setSelectedGameMode(e.target.value as GameMode);
   };
 
   const handleGenreChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    if (!isHost || !currentRoom) return;
-    const newGenre = e.target.value as GameGenre;
-    setRoom({ ...currentRoom, genreTag: newGenre });
+    if (!isHost) return;
+    setSelectedGenre(e.target.value as GameGenre);
   };
 
-  const handleStartGame = () => {
-    if (!isHost) return;
+  const handleStartGame = async () => {
+    if (!isHost || !currentRoom || !currentUser) return;
     setCountdown(5);
-    const interval = setInterval(() => {
+    const interval = setInterval(async () => {
       setCountdown((prev) => {
         if (prev === null || prev <= 1) {
           clearInterval(interval);
           startGame();
-          navigate('/game');
+
+          // Generate initial story and insert into game_state
+          const initializeGameState = async () => {
+            try {
+              const initialStory = await generateStoryBeginning(
+                currentRoom.genreTag || 'adventure',
+                players,
+                currentRoom
+              );
+
+              const { error } = await supabase
+                .from('game_state')
+                .insert({
+                  room_id: currentRoom.id,
+                  current_narrative: initialStory,
+                  story_log: JSON.stringify([{ type: 'intro', text: initialStory }]),
+                  current_turn: 0,
+                  current_player_id: currentUser.id,
+                });
+
+              if (error) {
+                console.error('[GAME STATE INSERT ERROR]', error.message);
+              } else {
+                console.log('[GAME STATE INITIALIZED]', { roomId: currentRoom.id });
+              }
+            } catch (error) {
+              console.error('[STORY GENERATION ERROR]', error);
+            }
+          };
+
+          initializeGameState();
           return null;
         }
         return prev - 1;
@@ -178,7 +365,7 @@ const LobbyScreen: React.FC = () => {
 
   const roomCode = currentRoom.code || 'N/A';
   const genre = currentRoom.genreTag || GameGenre.HORROR;
-  const hostPlayer = players.find(p => p.id === currentRoom.hostId);
+  const hostPlayer = players.find((p) => p.id === currentRoom.hostId);
   const hostName = hostPlayer?.username || 'Unknown';
   const playerCount = players.length;
 
@@ -208,9 +395,7 @@ const LobbyScreen: React.FC = () => {
             <Copy size={16} className="mr-2" /> Transmit Invite
           </h2>
           <div className="border border-amber-500 p-2 bg-gray-900 animate-pulse">
-            <p className="text-amber-500 font-mono text-center">
-              {roomCode}
-            </p>
+            <p className="text-amber-500 font-mono text-center">{roomCode}</p>
           </div>
           <Button
             variant="primary"
@@ -234,11 +419,8 @@ const LobbyScreen: React.FC = () => {
           </h2>
           <div className="border border-green-500 p-2">
             {players.map((player) => (
-              <p
-                key={player.id}
-                className="text-green-500 font-mono text-sm"
-              >
-                &gt; {player.username || 'Unknown'}
+              <p key={player.id} className="text-green-500 font-mono text-sm">
+                {'>'} {player.username || 'Unknown'}
                 {player.id === currentRoom.hostId && (
                   <span className="text-amber-500"> (Host)</span>
                 )}
@@ -260,11 +442,12 @@ const LobbyScreen: React.FC = () => {
             <>
               <div className="border border-green-500 p-2 mb-4">
                 <div className="flex justify-between items-center mb-2">
-                  <span className="text-green-500 font-mono text-sm">&gt; Genre:</span>
+                  <span className="text-green-500 font-mono text-sm">{'>'} Genre:</span>
                   <select
                     className="bg-black text-green-500 border border-green-500 font-mono text-sm p-1"
-                    value={currentRoom.genreTag || GameGenre.HORROR}
+                    value={selectedGenre}
                     onChange={handleGenreChange}
+                    aria-label="Genre"
                   >
                     {Object.values(GameGenre).map((genre) => (
                       <option key={genre} value={genre} className="bg-black">
@@ -274,11 +457,12 @@ const LobbyScreen: React.FC = () => {
                   </select>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-green-500 font-mono text-sm">&gt; Mode:</span>
+                  <span className="text-green-500 font-mono text-sm">{'>'} Mode:</span>
                   <select
                     className="bg-black text-green-500 border border-green-500 font-mono text-sm p-1"
-                    value={currentRoom.gameMode || GameMode.FREE_TEXT}
+                    value={selectedGameMode}
                     onChange={handleGameModeChange}
+                    aria-label="Game Mode"
                   >
                     {Object.values(GameMode).map((mode) => (
                       <option key={mode} value={mode} className="bg-black">
@@ -288,6 +472,14 @@ const LobbyScreen: React.FC = () => {
                   </select>
                 </div>
               </div>
+              <Button
+                variant="primary"
+                fullWidth
+                onClick={handleSaveSettings}
+                className="bg-green-500 hover:bg-green-600 text-black font-mono mb-2"
+              >
+                [SAVE SETTINGS]
+              </Button>
               <Button
                 variant="primary"
                 fullWidth
