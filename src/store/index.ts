@@ -77,15 +77,18 @@ export const useGameStore = create<GameStore>((set, get) => {
       return [];
     }
 
-    const players: User[] = sessions?.map((session) => ({
-      id: session.user_id,
-      username: session.profiles?.username || 'Player',
-      avatar:
-        session.profiles?.avatar_url ||
-        `https://api.dicebear.com/7.x/pixel-art/svg?seed=${session.profiles?.username || 'player'}`,
-      oarWalletLinked: false,
-      status: 'alive',
-    })) || [];
+    const players: User[] = sessions?.map((session) => {
+      const profile = Array.isArray(session.profiles) ? session.profiles[0] : session.profiles;
+      return {
+        id: session.user_id,
+        username: profile?.username || 'Player',
+        avatar:
+          profile?.avatar_url ||
+          `https://api.dicebear.com/7.x/pixel-art/svg?seed=${profile?.username || 'player'}`,
+        oarWalletLinked: false,
+        status: 'alive',
+      };
+    }) || [];
 
     set({ players });
     return players;
@@ -319,6 +322,7 @@ export const useGameStore = create<GameStore>((set, get) => {
           genreTag: room.genre_tag as GameGenre,
           createdAt: room.created_at,
           hostId: room.host_id,
+          isPublic: room.is_public,
           gameMode: (room.game_mode as GameMode) || GameMode.FREE_TEXT,
         },
         players,
@@ -368,6 +372,7 @@ export const useGameStore = create<GameStore>((set, get) => {
           genreTag: room.genre_tag as GameGenre,
           createdAt: room.created_at,
           hostId: room.host_id,
+          isPublic: room.is_public,
           gameMode: (room.game_mode as GameMode) || GameMode.FREE_TEXT,
         },
         players: updatedPlayers,

@@ -6,7 +6,7 @@ import StoryConsole from './StoryConsole';
 import ChatSidebar from './ChatSidebar';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
-import { StorySegment, GameState, GameProgress, GameMode } from '../../types';
+import { StorySegment, GameState, GameProgress, GameMode, DecisionType } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
 import { generateStoryBeginning, generateStoryContinuation } from '../../utils/mockAi';
 import { supabase } from '../../lib/supabase';
@@ -139,7 +139,7 @@ const GameScreen: React.FC = () => {
             roomId: currentRoom.id,
             content: '',
             aiResponse: initialStory,
-            decisionType: 'freestyle',
+            decisionType: 'freestyle' as any,
             options: [],
             createdAt: new Date().toISOString(),
           };
@@ -153,7 +153,7 @@ const GameScreen: React.FC = () => {
             roomId: currentRoom.id,
             content: '',
             aiResponse: 'The story begins... [error]',
-            decisionType: 'freestyle',
+            decisionType: 'freestyle' as any,
             options: [],
             createdAt: new Date().toISOString(),
           };
@@ -220,7 +220,7 @@ const GameScreen: React.FC = () => {
         roomId: currentRoom.id,
         content: choice,
         aiResponse: text.replace('[GAME_ENDED]', ''),
-        decisionType: 'freestyle',
+        decisionType: 'freestyle' as any,
         options: [],
         createdAt: new Date().toISOString(),
       };
@@ -269,7 +269,7 @@ const GameScreen: React.FC = () => {
         roomId: currentRoom.id,
         content: choice,
         aiResponse: 'The story pauses... [error]',
-        decisionType: 'freestyle',
+        decisionType: 'freestyle' as any,
         options: [],
         createdAt: new Date().toISOString(),
       };
@@ -327,7 +327,7 @@ const GameScreen: React.FC = () => {
             roomId: currentRoom?.id || '',
             content: log.type === 'player_input' ? log.text : '',
             aiResponse: log.type === 'ai_response' || log.type === 'intro' ? log.text : '',
-            decisionType: 'freestyle',
+            decisionType: DecisionType.FREESTYLE,
             options: [],
             createdAt: new Date().toISOString(),
           })) || []}

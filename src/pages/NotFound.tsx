@@ -41,15 +41,15 @@ const NotFound: React.FC = () => {
             or perhaps it exists in another timeline.
           </p>
           
-          <Button 
-            variant="primary" 
-            size="lg"
-            icon={<Home size={18} />}
-            as={Link} 
-            to="/"
-          >
-            Return Home
-          </Button>
+          <Link to="/" className="inline-block">
+            <Button 
+              variant="primary" 
+              size="lg"
+              icon={<Home size={18} />}
+            >
+              Return Home
+            </Button>
+          </Link>
         </div>
       </div>
     </Layout>

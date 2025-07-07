@@ -78,6 +78,9 @@ export const signUpUser = async (email: string, password: string, username: stri
 
     // In development, disable email confirmation
     if (import.meta.env.DEV) {
+      if (!signUpOptions.options) {
+        signUpOptions.options = {};
+      }
       signUpOptions.options.emailRedirectTo = window.location.origin;
     }
 

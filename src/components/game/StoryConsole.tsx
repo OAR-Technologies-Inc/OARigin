@@ -129,7 +129,6 @@ const StoryConsole: React.FC<StoryConsoleProps> = ({
         <Terminal
           lines={getDisplayedLines()}
           animatedLine={getActiveLine()}
-          typing={!!tempSegment}
           onTypingComplete={() => {
             if (tempSegment) {
               addStorySegment(tempSegment);

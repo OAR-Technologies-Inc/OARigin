@@ -2,8 +2,8 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useGameStore } from '../store';
 import { supabase } from '../lib/supabase';
 import { Clock, Copy, Play, Users } from 'lucide-react';
-import Button from '../ui/Button';
-import { GameGenre, GameMode } from '../types';
+import Button from '../components/ui/Button';
+import { GameGenre, GameMode, } from '../types';
 import Card from '../components/ui/Card';
 import { generateStoryBeginning } from '../utils/mockAi';
 
@@ -156,7 +156,7 @@ const LobbyScreen: React.FC = () => {
             isPublic: raw.isPublic,
           };
 
-          if (updatedRoom.status === 'playing') {
+          if (updatedRoom.status === 'in_progress') {
             console.log('[ROOM STATUS] Game started — updating store');
             useGameStore.getState().setRoom(updatedRoom);
           }
