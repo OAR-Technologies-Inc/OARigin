@@ -173,18 +173,20 @@ export const useGameStore = create<GameStore>((set, get) => {
       const { currentRoom } = get();
       if (!currentRoom?.id) return;
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('rooms')
         .update({
           status: 'in_progress',
           updated_at: new Date().toISOString()
         })
-        .eq('id', currentRoom.id);
+        .eq('id', currentRoom.id)
+        .select()
+        .single();
 
       if (error) {
         console.error('[START GAME ERROR]', error.message, error.details);
       } else {
-        console.log('[START GAME] Room status updated to in_progress for room:', currentRoom.id);
+        console.log('[START GAME] Room status updated to in_progress for room:', currentRoom.id, data);
       }
 
       set({ gameState: GameState.PLAYING });
@@ -308,16 +310,24 @@ export const useGameStore = create<GameStore>((set, get) => {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('[CREATE ROOM ERROR]', error.message, error.details);
+        throw error;
+      }
 
       // Create session for the host
-      await supabase
+      const { error: sessionError } = await supabase
         .from('sessions')
         .insert({
           user_id: currentUser.id,
           room_id: room.id,
           is_active: true,
         });
+
+      if (sessionError) {
+        console.error('[HOST SESSION INSERT ERROR]', sessionError.message, sessionError.details);
+        throw sessionError;
+      }
 
       // Fetch players immediately after session insertion
       const players = await fetchPlayers(room.id);
@@ -348,7 +358,10 @@ export const useGameStore = create<GameStore>((set, get) => {
         .eq('code', roomCode.toUpperCase())
         .single();
 
-      if (error || !room) throw new Error('Room not found or no longer available');
+      if (error || !room) {
+        console.error('[JOIN ROOM ERROR]', error?.message || 'Room not found');
+        throw new Error('Room not found or no longer available');
+      }
 
       // Create session for the user
       const { error: sessionError } = await supabase
@@ -359,7 +372,10 @@ export const useGameStore = create<GameStore>((set, get) => {
           is_active: true,
         });
 
-      if (sessionError) throw sessionError;
+      if (sessionError) {
+        console.error('[SESSION INSERT ERROR]', sessionError.message, sessionError.details);
+        throw sessionError;
+      }
 
       // Force sync by updating room's updated_at
       await supabase
