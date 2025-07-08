@@ -35,6 +35,32 @@ const LobbyScreen: React.FC = () => {
 
     isMounted.current = true;
 
+    const joinSession = async () => {
+      if (!currentUser) {
+        console.warn('[SESSION JOIN] No current user');
+        return;
+      }
+
+      const { error } = await supabase
+        .from('sessions')
+        .upsert(
+          [
+            {
+              user_id: currentUser.id,
+              room_id: roomId,
+              is_active: true,
+            },
+          ],
+          { onConflict: 'user_id,room_id' }
+        );
+
+      if (error) {
+        console.error('[SESSION JOIN ERROR]', error.message, error.details);
+      } else {
+        console.log('[SESSION JOINED]', { userId: currentUser.id, roomId });
+      }
+    };
+
     const fetchPlayers = async () => {
       if (!isMounted.current) return;
       console.log('[FETCH PLAYERS] Running fetch for room:', roomId);
@@ -70,6 +96,7 @@ const LobbyScreen: React.FC = () => {
       }
     };
 
+    joinSession();
     fetchPlayers();
 
     const sessionChannel = supabase
@@ -360,7 +387,7 @@ const LobbyScreen: React.FC = () => {
                   <select
                     className="bg-black text-green-500 border border-green-500 font-mono text-sm p-1"
                     value={currentRoom.genreTag || GameGenre.HORROR}
-                    onChange={handleGameModeChange}
+                    onChange={handleGenreChange}
                   >
                     {Object.values(GameGenre).map((genre) => (
                       <option key={genre} value={genre} className="bg-black">
