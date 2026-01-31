@@ -364,7 +364,6 @@ const LobbyScreen: React.FC = () => {
                   story_log: JSON.stringify([{ type: 'intro', text: initialStory }]),
                   current_turn: 0,
                   current_player_id: currentUser.id,
-                  dead_players: [],
                 })
                 .select()
                 .single();
