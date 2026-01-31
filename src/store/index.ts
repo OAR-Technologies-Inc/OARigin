@@ -11,6 +11,7 @@ interface GameStateTable {
   story_log: { type: string; text: string }[];
   current_turn: number;
   current_player_id: string;
+  dead_players: string[];
   created_at: string;
   updated_at: string;
 }

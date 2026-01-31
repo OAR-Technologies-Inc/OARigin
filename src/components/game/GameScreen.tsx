@@ -64,8 +64,16 @@ const GameScreen: React.FC = () => {
           story_log: data.story_log,
           current_turn: data.current_turn,
           current_player_id: data.current_player_id,
+          dead_players: data.dead_players || [],
           created_at: data.created_at,
           updated_at: data.updated_at,
+        });
+        // Sync dead players to local store
+        const deadPlayerIds = data.dead_players || [];
+        deadPlayerIds.forEach((id: string) => {
+          if (!useGameStore.getState().deadPlayers.includes(id)) {
+            markPlayerDead(id);
+          }
         });
       } else {
         console.warn('[FETCH GAME STATE] No game state found for room:', currentRoom.id);
@@ -93,11 +101,22 @@ const GameScreen: React.FC = () => {
               story_log: { type: string; text: string }[];
               current_turn: number;
               current_player_id: string;
+              dead_players: string[];
               created_at: string;
               updated_at: string;
             };
             console.log('[REALTIME] Game state updated:', newState);
-            setGameStateTable(newState);
+            setGameStateTable({
+              ...newState,
+              dead_players: newState.dead_players || [],
+            });
+            // Sync dead players to local store
+            const deadPlayerIds = newState.dead_players || [];
+            deadPlayerIds.forEach((id: string) => {
+              if (!useGameStore.getState().deadPlayers.includes(id)) {
+                markPlayerDead(id);
+              }
+            });
           }
         }
       )
@@ -214,7 +233,19 @@ const GameScreen: React.FC = () => {
       console.log('playerDied:', playerDied);
 
       if (playerDied) {
-        markPlayerDead(players[currentPlayerIndex].id);
+        const deadPlayerId = players[currentPlayerIndex].id;
+        markPlayerDead(deadPlayerId);
+        // Persist death to database
+        const currentDeadPlayers = gameStateTable?.dead_players || [];
+        if (!currentDeadPlayers.includes(deadPlayerId)) {
+          await supabase
+            .from('game_state')
+            .update({
+              dead_players: [...currentDeadPlayers, deadPlayerId],
+              updated_at: new Date().toISOString(),
+            })
+            .eq('room_id', currentRoom.id);
+        }
       }
       if (text.includes('[GAME_ENDED]')) {
         setGameState(GameState.ENDED);
